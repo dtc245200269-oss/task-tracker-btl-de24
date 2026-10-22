@@ -19,11 +19,13 @@
 
 | Thông Tin Sinh Viên | Chi Tiết |
 | :--- | :--- |
-| **Họ và tên sinh viên:** | Nguyễn Văn A |
-| **Mã số sinh viên (MSSV):** | 20210001 *(Sinh viên thay đúng mã số của mình)* |
-| **Lớp chuyên ngành:** | Kỹ Thuật Phần Mềm / Hệ Thống Thông Tin |
-| **Giảng viên hướng dẫn:** | ThS. / TS. Giảng Viên Hướng Dẫn |
-| **Năm học - Học kỳ:** | Học kỳ I - Năm học 2025 - 2026 |
+| **Họ và tên sinh viên:** | Phạm Ngọc Sơn |
+| **Mã số sinh viên (MSSV):** | DTC245200269 |
+| **Tài khoản GitHub:** | `dtc245200269-oss` |
+| **Repository GitHub:** | `https://github.com/dtc245200269-oss/task-tracker-btl-de24` |
+| **Lớp chuyên ngành:** | Công Nghệ Thông Tin / Quản Trị Hệ Thống |
+| **Địa chỉ IP máy ảo VMware:** | `192.168.180.128` |
+| **Năm học - Học kỳ:** | Năm học 2025 - 2026 |
 
 <br><br><br>
 
@@ -305,7 +307,7 @@ Trong file `database/init.sql`, hệ thống được trang bị các kỹ thu�
   ```
 
 ## 3.4. Quản trị cơ sở dữ liệu qua giao diện pgAdmin 4
-Dịch vụ `pgadmin` được tích hợp trong Docker Compose, truy cập thuận tiện qua Nginx tại đường dẫn `http://<IP_VM>/pgadmin/`.
+Dịch vụ `pgadmin` được tích hợp trong Docker Compose, truy cập thuận tiện qua Nginx tại đường dẫn `http://192.168.180.128/pgadmin/`.
 - Thông tin đăng nhập mặc định:
   - Email: `admin@tasktracker.com`
   - Mật khẩu: `AdminSecure2026!`
@@ -542,10 +544,10 @@ git commit -m "feat(observability&security): deploy centralized Loki logging, Pr
 Trên máy ảo VMware, sinh viên thực hiện qua SSH:
 ```bash
 # 1. Kết nối SSH
-ssh user@<IP_VM>
+ssh ngocson@192.168.180.128
 
 # 2. Clone mã nguồn
-git clone https://github.com/<MSSV>/task-tracker-btl-de24.git
+git clone https://github.com/dtc245200269-oss/task-tracker-btl-de24.git
 cd task-tracker-btl-de24
 
 # 3. Tạo file cấu hình và SSL
@@ -582,15 +584,15 @@ Khi trình bày trước Hội đồng chấm thi, sinh viên thực hiện tu�
    - Mở cửa sổ SSH vào VMware.
    - Chạy lệnh `docker compose ps` để chứng minh 10 containers đang trong trạng thái `Up (healthy)`.
 3. **Bước 3 - Demo Website Task Tracker:**
-   - Truy cập trình duyệt `http://<IP_VM>/`.
+   - Truy cập trình duyệt `http://192.168.180.128/`.
    - Tạo một công việc mới: Tiêu đề "Kiểm thử hệ thống", chọn loại "Nhóm", độ ưu tiên "Cao", gán deadline.
    - Thao tác chuyển trạng thái giữa các cột Kanban (To Do -> In Progress -> Done).
    - Chuyển sang dạng Danh Sách (List View) và thử tìm kiếm bằng ô Search.
 4. **Bước 4 - Demo pgAdmin:**
-   - Truy cập `http://<IP_VM>/pgadmin/`.
+   - Truy cập `http://192.168.180.128/pgadmin/`.
    - Đăng nhập và mở bảng `tasks` để chứng minh công việc vừa tạo trên Web đã được lưu thành công vào PostgreSQL.
 5. **Bước 5 - Demo Giám sát Prometheus & Grafana:**
-   - Truy cập `http://<IP_VM>/grafana/`.
+   - Truy cập `http://192.168.180.128/grafana/`.
    - Mở Dashboard **TaskTracker Hệ Thống Giám Sát Toàn Diện**.
    - Chỉ ra đồ thị: Tần suất HTTP Request tăng lên khi sinh viên thao tác trên web, biểu đồ CPU/RAM của cAdvisor và trạng thái kết nối DB.
 6. **Bước 6 - Demo Truy vấn LogQL:**

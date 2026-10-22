@@ -187,7 +187,7 @@ git commit -m "feat(observability&security): deploy centralized Loki logging, Pr
 ### Bước 4.3: Đẩy mã nguồn lên GitHub
 ```bash
 # Thêm Remote (thay thế URL bằng repo của bạn)
-git remote add origin https://github.com/<MSSV>/task-tracker-btl-de24.git
+git remote add origin https://github.com/dtc245200269-oss/task-tracker-btl-de24.git
 
 # Đẩy toàn bộ nhánh main và 03 commit lên GitHub
 git push -u origin main
@@ -232,7 +232,7 @@ ssh <tên_user_vm>@192.168.1.100
 ### Bước 5.3: Clone mã nguồn từ GitHub về máy ảo
 ```bash
 cd ~
-git clone https://github.com/<MSSV>/task-tracker-btl-de24.git
+git clone https://github.com/dtc245200269-oss/task-tracker-btl-de24.git
 cd task-tracker-btl-de24
 ```
 
@@ -262,15 +262,15 @@ Tất cả 10 containers đều phải ở trạng thái `running` (hoặc `heal
 
 ## 6. Danh Sách Cổng & Địa Chỉ Truy Cập Dịch Vụ
 
-*(Thay `192.168.1.100` bằng địa chỉ IP máy ảo VMware của bạn)*
+*(Địa chỉ IP máy ảo VMware: `192.168.180.128`)*
 
 | Dịch Vụ | Địa Chỉ Truy Cập (Qua Nginx) | Tài Khoản / Mật Khẩu Mặc Định | Mô Tả |
 | :--- | :--- | :--- | :--- |
-| **TaskTracker Web** | `http://192.168.1.100/` hoặc `https://192.168.1.100/` | *Truy cập trực tiếp* | Quản lý công việc Kanban, Deadline, Cá nhân/Nhóm |
-| **pgAdmin 4** | `http://192.168.1.100/pgadmin/` | Email: `admin@tasktracker.com`<br>Pass: `AdminSecure2026!` | Quản trị giao diện CSDL PostgreSQL |
-| **Grafana** | `http://192.168.1.100/grafana/` | User: `admin`<br>Pass: `GrafanaSecure2026!` | Dashboard giám sát Container, Web & DB, xem Logs |
-| **Prometheus** | `http://192.168.1.100/prometheus/` | *Truy cập trực tiếp* | Máy chủ giám sát Metrics & PromQL Query |
-| **App Metrics** | `http://192.168.1.100/metrics` | *Truy cập trực tiếp* | Prometheus raw metrics từ Node.js prom-client |
+| **TaskTracker Web** | `http://192.168.180.128/` hoặc `https://192.168.180.128/` | *Truy cập trực tiếp* | Quản lý công việc Kanban, Deadline, Cá nhân/Nhóm |
+| **pgAdmin 4** | `http://192.168.180.128/pgadmin/` | Email: `admin@tasktracker.com`<br>Pass: `AdminSecure2026!` | Quản trị giao diện CSDL PostgreSQL |
+| **Grafana** | `http://192.168.180.128/grafana/` | User: `admin`<br>Pass: `GrafanaSecure2026!` | Dashboard giám sát Container, Web & DB, xem Logs |
+| **Prometheus** | `http://192.168.180.128/prometheus/` | *Truy cập trực tiếp* | Máy chủ giám sát Metrics & PromQL Query |
+| **App Metrics** | `http://192.168.180.128/metrics` | *Truy cập trực tiếp* | Prometheus raw metrics từ Node.js prom-client |
 
 ---
 

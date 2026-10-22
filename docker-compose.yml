@@ -27,6 +27,7 @@ services:
       - DB_NAME=${DB_NAME:-tasktracker_db}
       - LOG_LEVEL=info
     volumes:
+      - ./app/public:/app/public:ro
       - app_logs:/app/logs
     networks:
       - frontend-net

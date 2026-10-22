@@ -764,14 +764,19 @@
        ============================================================================== */
     .modal-overlay {
       position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.65);
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.7);
       backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 99999;
       padding: 20px;
+      box-sizing: border-box;
       animation: modalFadeIn 0.2s ease-out;
     }
 
@@ -781,8 +786,10 @@
       border-radius: var(--radius-xl);
       width: 100%;
       max-width: 600px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
       overflow: hidden;
+      position: relative;
+      z-index: 100000;
       animation: modalSlideUp 0.25s ease-out;
     }
 
@@ -1064,7 +1071,7 @@
           </button>
 
           <!-- Primary Add Task Button -->
-          <button class="btn-create-task" onclick="openCreateModal('todo')">
+          <button class="btn-create-task" id="btnMainCreateTask" onclick="openCreateModal('todo')">
             <i class="fa-solid fa-plus"></i>
             <span>Tạo Công Việc</span>
           </button>
@@ -1855,66 +1862,147 @@
       } catch {}
     }
 
-    function openCreateModal(status = 'todo') {
-      appState.editingTaskId = null;
-      document.getElementById('modalTitle').textContent = 'Tạo Công Việc Mới';
-      document.getElementById('taskForm').reset();
-      document.getElementById('inputTaskId').value = '';
-      document.getElementById('inputStatus').value = status;
-      document.getElementById('inputType').value = 'personal';
-      document.getElementById('groupTeamSelect').classList.add('hidden');
+    window.openCreateModal = function(status = 'todo') {
+      const modal = document.getElementById('taskModal');
+      if (!modal) {
+        console.error('Không tìm thấy hộp thoại taskModal trong DOM!');
+        return;
+      }
 
-      // Mặc định deadline là 2 ngày sau
-      const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-      document.getElementById('inputDeadline').value = d.toISOString().slice(0, 16);
+      // 1. Mở modal ngay lập tức và đưa lên trên cùng
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      modal.style.visibility = 'visible';
+      modal.style.opacity = '1';
+      modal.style.zIndex = '99999';
 
-      document.getElementById('taskModal').classList.remove('hidden');
-    }
+      // 2. Thiết lập dữ liệu form an toàn
+      try {
+        appState.editingTaskId = null;
+        const titleEl = document.getElementById('modalTitle');
+        if (titleEl) titleEl.textContent = 'Tạo Công Việc Mới';
 
-    function openEditModal(id) {
+        const form = document.getElementById('taskForm');
+        if (form) form.reset();
+
+        const idInput = document.getElementById('inputTaskId');
+        if (idInput) idInput.value = '';
+
+        const statusInput = document.getElementById('inputStatus');
+        if (statusInput) statusInput.value = status || 'todo';
+
+        const typeInput = document.getElementById('inputType');
+        if (typeInput) typeInput.value = 'personal';
+
+        const teamGroup = document.getElementById('groupTeamSelect');
+        if (teamGroup) teamGroup.classList.add('hidden');
+
+        const deadlineInput = document.getElementById('inputDeadline');
+        if (deadlineInput) {
+          const d = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const hh = String(d.getHours()).padStart(2, '0');
+          const min = String(d.getMinutes()).padStart(2, '0');
+          deadlineInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+        }
+
+        const titleInput = document.getElementById('inputTitle');
+        if (titleInput) {
+          setTimeout(() => titleInput.focus(), 60);
+        }
+      } catch (err) {
+        console.error('Lỗi khi mở form tạo:', err);
+      }
+    };
+
+    window.openEditModal = function(id) {
+      const modal = document.getElementById('taskModal');
+      if (!modal) return;
+
       const task = appState.tasks.find(t => t.id === id);
       if (!task) return;
 
-      appState.editingTaskId = id;
-      document.getElementById('modalTitle').textContent = 'Chỉnh Sửa Công Việc';
-      document.getElementById('inputTaskId').value = task.id;
-      document.getElementById('inputTitle').value = task.title;
-      document.getElementById('inputDescription').value = task.description || '';
-      document.getElementById('inputType').value = task.type || 'personal';
-      document.getElementById('inputStatus').value = task.status;
-      document.getElementById('inputPriority').value = task.priority;
-      document.getElementById('inputAssignee').value = task.assigned_user_name || 'Phạm Ngọc Sơn';
+      // 1. Mở modal ngay lập tức
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+      modal.style.visibility = 'visible';
+      modal.style.opacity = '1';
+      modal.style.zIndex = '99999';
 
-      if (task.type === 'team') {
-        document.getElementById('groupTeamSelect').classList.remove('hidden');
-        document.getElementById('inputTeam').value = task.team_id || '1';
-      } else {
-        document.getElementById('groupTeamSelect').classList.add('hidden');
+      // 2. Điền dữ liệu cũ an toàn
+      try {
+        appState.editingTaskId = id;
+        const titleEl = document.getElementById('modalTitle');
+        if (titleEl) titleEl.textContent = 'Chỉnh Sửa Công Việc';
+
+        const idInput = document.getElementById('inputTaskId');
+        if (idInput) idInput.value = task.id;
+
+        const titleInput = document.getElementById('inputTitle');
+        if (titleInput) titleInput.value = task.title || '';
+
+        const descInput = document.getElementById('inputDescription');
+        if (descInput) descInput.value = task.description || '';
+
+        const typeInput = document.getElementById('inputType');
+        if (typeInput) typeInput.value = task.type || 'personal';
+
+        const statusInput = document.getElementById('inputStatus');
+        if (statusInput) statusInput.value = task.status || 'todo';
+
+        const priorityInput = document.getElementById('inputPriority');
+        if (priorityInput) priorityInput.value = task.priority || 'medium';
+
+        const assigneeInput = document.getElementById('inputAssignee');
+        if (assigneeInput) assigneeInput.value = task.assigned_user_name || 'Phạm Ngọc Sơn';
+
+        const teamGroup = document.getElementById('groupTeamSelect');
+        if (teamGroup) {
+          if (task.type === 'team') {
+            teamGroup.classList.remove('hidden');
+            const teamSelect = document.getElementById('inputTeam');
+            if (teamSelect) teamSelect.value = task.team_id || '1';
+          } else {
+            teamGroup.classList.add('hidden');
+          }
+        }
+
+        const deadlineInput = document.getElementById('inputDeadline');
+        if (deadlineInput && task.deadline) {
+          try {
+            const d = new Date(task.deadline);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            deadlineInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+          } catch {
+            deadlineInput.value = '';
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi mở form sửa:', err);
       }
+    };
 
-      if (task.deadline) {
-        const d = new Date(task.deadline);
-        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-        document.getElementById('inputDeadline').value = d.toISOString().slice(0, 16);
-      } else {
-        document.getElementById('inputDeadline').value = '';
-      }
+    window.closeModal = function() {
+      const modal = document.getElementById('taskModal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    };
 
-      document.getElementById('taskModal').classList.remove('hidden');
-    }
-
-    function closeModal() {
-      document.getElementById('taskModal').classList.add('hidden');
-    }
-
-    function handleBackdropClick(e) {
+    window.handleBackdropClick = function(e) {
       if (e.target.id === 'taskModal') closeModal();
-    }
+    };
 
-    function toggleTeamSelect(val) {
-      document.getElementById('groupTeamSelect').classList.toggle('hidden', val !== 'team');
-    }
+    window.toggleTeamSelect = function(val) {
+      const teamGroup = document.getElementById('groupTeamSelect');
+      if (teamGroup) teamGroup.classList.toggle('hidden', val !== 'team');
+    };
 
     async function handleFormSubmit(e) {
       e.preventDefault();
@@ -2155,6 +2243,15 @@
         document.body.classList.add('dark-mode');
         const icon = document.querySelector('#btnThemeToggle i');
         if (icon) icon.className = 'fa-solid fa-sun';
+      }
+
+      // Gắn sự kiện click trực tiếp cho nút Tạo Công Việc trên Header
+      const createBtn = document.getElementById('btnMainCreateTask');
+      if (createBtn) {
+        createBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.openCreateModal('todo');
+        });
       }
 
       loadTasks();

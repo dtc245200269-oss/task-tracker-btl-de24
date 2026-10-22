@@ -105,12 +105,15 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/stats', statRoutes);
 
-// 10. Phục vụ giao diện tĩnh Frontend
+// 10. Phục vụ giao diện tĩnh Frontend (Vô hiệu hóa cache cho HTML để người dùng luôn nhận bản mới nhất)
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   dotfiles: 'ignore',
-  etag: true,
-  maxAge: '1h',
+  etag: false,
+  maxAge: 0,
   setHeaders: (res, filePath) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     if (filePath.endsWith('.css')) {
       res.setHeader('Content-Type', 'text/css');
     } else if (filePath.endsWith('.js')) {
@@ -124,6 +127,9 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.includes('.')) {
     return next();
   }
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 

@@ -106,11 +106,22 @@ app.use('/api/teams', teamRoutes);
 app.use('/api/stats', statRoutes);
 
 // 10. Phục vụ giao diện tĩnh Frontend
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  dotfiles: 'ignore',
+  etag: true,
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    } else if (filePath.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }
+}));
 
-// Fallback trang chủ SPA
+// Fallback trang chủ SPA (Chỉ dành cho client-side routing, không catch file tĩnh)
 app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) {
+  if (req.path.startsWith('/api') || req.path.includes('.')) {
     return next();
   }
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));

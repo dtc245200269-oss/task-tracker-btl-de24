@@ -16,8 +16,23 @@
   <!-- Chart.js for Beautiful Analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <!-- Modern Stylesheet -->
-  <link rel="stylesheet" href="/css/style.css">
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Modern Stylesheet & Fallbacks -->
+  <link rel="stylesheet" href="/css/style.css?v=2.0">
 </head>
 <body class="dark-theme">
   <!-- Mesh Ambient Gradients -->
@@ -443,6 +458,6 @@
   <div class="toast-shelf" id="toastContainer"></div>
 
   <!-- App Script -->
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=2.0"></script>
 </body>
 </html>

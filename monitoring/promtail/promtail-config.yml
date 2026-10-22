@@ -1,0 +1,46 @@
+# ==========================================================
+# Grafana Promtail Configuration (Thu thập Logs)
+# ==========================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # 1. Thu thập logs ứng dụng Node.js Express (File JSON logs)
+  - job_name: tasktracker-app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: tasktracker-app
+          service: tasktracker-api
+          environment: production
+          __path__: /var/log/app/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            service: service
+      - labels:
+          level:
+          service:
+
+  # 2. Thu thập logs của Web Server Nginx Reverse Proxy
+  - job_name: nginx-proxy
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: nginx-proxy
+          service: nginx-reverse-proxy
+          __path__: /var/log/nginx/*.log

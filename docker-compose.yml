@@ -1,0 +1,289 @@
+# ==============================================================================
+# HỆ THỐNG QUẢN LÝ CÔNG VIỆC (TASK TRACKER) - BÀI TẬP LỚN ĐỀ 24
+# Stack: Node.js (Express) + PostgreSQL + pgAdmin + Nginx (HTTPS) +
+#        Prometheus + Grafana + Loki + Promtail + cAdvisor + postgres-exporter
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Ứng Dụng Chính: Task Tracker Web API & Frontend (Node.js Express)
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    image: tasktracker-app:latest
+    container_name: tasktracker-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-taskuser}
+      - DB_PASSWORD=${DB_PASSWORD:-TaskSecurePass2026!}
+      - DB_NAME=${DB_NAME:-tasktracker_db}
+      - LOG_LEVEL=info
+    volumes:
+      - app_logs:/app/logs
+    networks:
+      - frontend-net
+      - backend-net
+      - monitoring-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # 2. Cơ Sở Dữ Liệu: PostgreSQL 16 (Bảo mật Hardening: Cách ly Backend Network)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: tasktracker-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-taskuser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-TaskSecurePass2026!}
+      - POSTGRES_DB=${DB_NAME:-tasktracker_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-taskuser} -d ${DB_NAME:-tasktracker_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # 3. Quản Trị Cơ Sở Dữ Liệu: pgAdmin 4
+  # ----------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tasktracker-pgadmin
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@tasktracker.local}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-AdminSecure2026!}
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - SCRIPT_NAME=/pgadmin
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - frontend-net
+      - backend-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+
+  # ----------------------------------------------------------------------------
+  # 4. Web Server: Nginx Reverse Proxy (HTTPS Tự Ký, Security Headers, Rate Limit)
+  # ----------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: tasktracker-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - frontend-net
+    depends_on:
+      - app
+      - pgadmin
+      - grafana
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ----------------------------------------------------------------------------
+  # 5. Database Metrics Exporter: postgres-exporter cho Prometheus
+  # ----------------------------------------------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: tasktracker-postgres-exporter
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${DB_USER:-taskuser}:${DB_PASSWORD:-TaskSecurePass2026!}@postgres:5432/${DB_NAME:-tasktracker_db}?sslmode=disable
+    networks:
+      - backend-net
+      - monitoring-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ----------------------------------------------------------------------------
+  # 6. Container Metrics: cAdvisor (Giám sát CPU, RAM, Network của Container)
+  # ----------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: tasktracker-cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+
+  # ----------------------------------------------------------------------------
+  # 7. Giám Sát Metrics: Prometheus
+  # ----------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: tasktracker-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.route-prefix=/prometheus'
+      - '--web.external-url=/prometheus/'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitoring-net
+      - frontend-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # 8. Trực Quan Hóa & Dashboard: Grafana
+  # ----------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: tasktracker-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-GrafanaSecure2026!}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards/json:/etc/grafana/provisioning/dashboards/json:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring-net
+      - frontend-net
+    depends_on:
+      - prometheus
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # 9. Hệ Thống Log Tập Trung: Grafana Loki
+  # ----------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: tasktracker-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - monitoring-net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # 10. Thu Thập Log: Grafana Promtail
+  # ----------------------------------------------------------------------------
+  promtail:
+    image: grafana/promtail:2.9.6
+    container_name: tasktracker-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - app_logs:/var/log/app:ro
+      - nginx_logs:/var/log/nginx:ro
+    networks:
+      - monitoring-net
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+
+# ==============================================================================
+# ĐỊNH NGHĨA NETWORKS & ISOLATION (BẢO MẬT HARDENING MẠNG DOCKER)
+# ==============================================================================
+networks:
+  frontend-net:
+    driver: bridge
+    name: tasktracker-frontend-net
+  backend-net:
+    driver: bridge
+    name: tasktracker-backend-net
+  monitoring-net:
+    driver: bridge
+    name: tasktracker-monitoring-net
+
+# ==============================================================================
+# PERSISTENT VOLUMES
+# ==============================================================================
+volumes:
+  postgres_data:
+    name: tasktracker-postgres-data
+  pgadmin_data:
+    name: tasktracker-pgadmin-data
+  prometheus_data:
+    name: tasktracker-prometheus-data
+  grafana_data:
+    name: tasktracker-grafana-data
+  loki_data:
+    name: tasktracker-loki-data
+  app_logs:
+    name: tasktracker-app-logs
+  nginx_logs:
+    name: tasktracker-nginx-logs

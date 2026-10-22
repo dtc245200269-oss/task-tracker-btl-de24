@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskTracker Pro - Hệ Thống Quản Lý Công Việc Cá Nhân & Nhóm</title>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Background Glow Accents -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="logo-box">
+        <i class="fa-solid fa-list-check"></i>
+      </div>
+      <div>
+        <h1 class="brand-title">TaskTracker <span class="badge-pro">PRO</span></h1>
+        <p class="brand-subtitle">Hệ thống Quản lý Công việc Cá nhân & Nhóm • Đề 24</p>
+      </div>
+    </div>
+
+    <!-- System Status & Quick Actions -->
+    <div class="nav-actions">
+      <div class="system-status" id="systemStatusBadge" title="Trạng thái kết nối dịch vụ">
+        <span class="status-dot"></span>
+        <span class="status-text">Hệ thống Online</span>
+      </div>
+
+      <div class="nav-links">
+        <a href="/pgadmin/" target="_blank" class="nav-link-btn" title="Mở pgAdmin quản trị DB">
+          <i class="fa-solid fa-database"></i> <span>pgAdmin</span>
+        </a>
+        <a href="/grafana/" target="_blank" class="nav-link-btn" title="Mở Grafana Dashboard">
+          <i class="fa-solid fa-chart-line"></i> <span>Grafana</span>
+        </a>
+        <a href="/metrics" target="_blank" class="nav-link-btn" title="Xem Prometheus Metrics">
+          <i class="fa-solid fa-gauge-high"></i> <span>Metrics</span>
+        </a>
+      </div>
+
+      <button id="btnOpenNewTaskModal" class="btn btn-primary">
+        <i class="fa-solid fa-plus"></i>
+        <span>Tạo Công Việc</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+    <!-- Stat Counter Cards -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon-wrapper blue">
+          <i class="fa-solid fa-layer-group"></i>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Tổng Công Việc</span>
+          <span class="stat-value" id="statTotal">0</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper amber">
+          <i class="fa-solid fa-spinner fa-spin-pulse"></i>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Đang Thực Hiện</span>
+          <span class="stat-value" id="statInProgress">0</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper emerald">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Đã Hoàn Thành</span>
+          <span class="stat-value" id="statDone">0</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper rose">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="stat-content">
+          <span class="stat-label">Quá Hạn Deadline</span>
+          <span class="stat-value" id="statOverdue">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar Filters & Controls -->
+    <section class="toolbar-section">
+      <!-- Search Input -->
+      <div class="search-box">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="searchInput" placeholder="Tìm kiếm công việc theo tiêu đề hoặc mô tả..." />
+        <button id="btnClearSearch" class="btn-clear-search hidden"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-group">
+        <!-- Scope Filter: All / Personal / Team -->
+        <div class="filter-tabs" id="typeFilterTabs">
+          <button class="filter-tab active" data-type="">Tất Cả</button>
+          <button class="filter-tab" data-type="personal"><i class="fa-solid fa-user"></i> Cá Nhân</button>
+          <button class="filter-tab" data-type="team"><i class="fa-solid fa-users"></i> Nhóm</button>
+        </div>
+
+        <!-- Priority Filter -->
+        <div class="select-wrapper">
+          <select id="priorityFilter" class="custom-select">
+            <option value="">-- Mọi mức ưu tiên --</option>
+            <option value="high">Ưu tiên Cao 🔴</option>
+            <option value="medium">Ưu tiên Trung bình 🟡</option>
+            <option value="low">Ưu tiên Thấp 🟢</option>
+          </select>
+        </div>
+
+        <!-- View Switcher -->
+        <div class="view-switcher">
+          <button id="btnViewKanban" class="view-btn active" title="Dạng bảng Kanban">
+            <i class="fa-solid fa-table-columns"></i>
+          </button>
+          <button id="btnViewList" class="view-btn" title="Dạng danh sách">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Content Views -->
+    <!-- 1. KANBAN BOARD VIEW -->
+    <section id="kanbanView" class="kanban-board">
+      <!-- Column: To Do -->
+      <div class="kanban-column" data-status="todo">
+        <div class="column-header">
+          <div class="col-title-group">
+            <span class="status-indicator-dot dot-slate"></span>
+            <h3>Cần Làm (To Do)</h3>
+            <span class="column-badge" id="countTodo">0</span>
+          </div>
+          <button class="btn-quick-add" onclick="openNewTaskModalWithStatus('todo')" title="Thêm công việc vào mục Cần làm">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+        <div class="column-cards" id="cardsTodo">
+          <!-- Cards injected via JS -->
+        </div>
+      </div>
+
+      <!-- Column: In Progress -->
+      <div class="kanban-column" data-status="in_progress">
+        <div class="column-header">
+          <div class="col-title-group">
+            <span class="status-indicator-dot dot-amber"></span>
+            <h3>Đang Làm (In Progress)</h3>
+            <span class="column-badge" id="countInProgress">0</span>
+          </div>
+          <button class="btn-quick-add" onclick="openNewTaskModalWithStatus('in_progress')" title="Thêm công việc vào Đang làm">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+        <div class="column-cards" id="cardsInProgress">
+          <!-- Cards injected via JS -->
+        </div>
+      </div>
+
+      <!-- Column: In Review -->
+      <div class="kanban-column" data-status="review">
+        <div class="column-header">
+          <div class="col-title-group">
+            <span class="status-indicator-dot dot-purple"></span>
+            <h3>Đang Đánh Giá (Review)</h3>
+            <span class="column-badge" id="countReview">0</span>
+          </div>
+          <button class="btn-quick-add" onclick="openNewTaskModalWithStatus('review')" title="Thêm công việc vào Đánh giá">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+        <div class="column-cards" id="cardsReview">
+          <!-- Cards injected via JS -->
+        </div>
+      </div>
+
+      <!-- Column: Done -->
+      <div class="kanban-column" data-status="done">
+        <div class="column-header">
+          <div class="col-title-group">
+            <span class="status-indicator-dot dot-emerald"></span>
+            <h3>Hoàn Thành (Done)</h3>
+            <span class="column-badge" id="countDone">0</span>
+          </div>
+          <button class="btn-quick-add" onclick="openNewTaskModalWithStatus('done')" title="Thêm công việc vào Hoàn thành">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+        <div class="column-cards" id="cardsDone">
+          <!-- Cards injected via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. LIST VIEW -->
+    <section id="listView" class="list-view-section hidden">
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Tiêu Đề Công Việc</th>
+              <th>Phân Loại</th>
+              <th>Độ Ưu Tiên</th>
+              <th>Trạng Thái</th>
+              <th>Người Thực Hiện</th>
+              <th>Hạn Chót (Deadline)</th>
+              <th class="text-right">Hành Động</th>
+            </tr>
+          </thead>
+          <tbody id="listTableBody">
+            <!-- Table rows injected via JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: TẠO HOẶC CHỈNH SỬA TASK -->
+  <div class="modal-backdrop hidden" id="taskModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTitle" class="modal-heading"><i class="fa-solid fa-circle-plus"></i> Tạo Công Việc Mới</h3>
+        <button class="btn-close-modal" id="btnCloseModal"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form id="taskForm" class="modal-form">
+        <input type="hidden" id="taskId" />
+
+        <!-- Tiêu đề -->
+        <div class="form-group">
+          <label for="taskTitle" class="form-label">Tiêu đề công việc <span class="required">*</span></label>
+          <input type="text" id="taskTitle" class="form-input" placeholder="Ví dụ: Thiết lập Nginx Reverse Proxy" required />
+        </div>
+
+        <!-- Mô tả -->
+        <div class="form-group">
+          <label for="taskDescription" class="form-label">Mô tả chi tiết</label>
+          <textarea id="taskDescription" rows="3" class="form-textarea" placeholder="Mô tả nội dung công việc, yêu cầu kỹ thuật hoặc ghi chú..."></textarea>
+        </div>
+
+        <!-- Phân loại & Nhóm -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskType" class="form-label">Phân loại</label>
+            <select id="taskType" class="form-select">
+              <option value="personal">👤 Công việc Cá nhân</option>
+              <option value="team">👥 Công việc Nhóm</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="teamSelectGroup">
+            <label for="taskTeam" class="form-label">Thuộc nhóm</label>
+            <select id="taskTeam" class="form-select">
+              <option value="">-- Chọn nhóm làm việc --</option>
+              <!-- Loaded dynamically -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Trạng thái & Độ ưu tiên -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskStatus" class="form-label">Trạng thái</label>
+            <select id="taskStatus" class="form-select">
+              <option value="todo">Cần làm (To Do)</option>
+              <option value="in_progress">Đang thực hiện (In Progress)</option>
+              <option value="review">Đang đánh giá (Review)</option>
+              <option value="done">Đã hoàn thành (Done)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="taskPriority" class="form-label">Mức độ ưu tiên</label>
+            <select id="taskPriority" class="form-select">
+              <option value="low">Thấp (Low) 🟢</option>
+              <option value="medium" selected>Trung bình (Medium) 🟡</option>
+              <option value="high">Cao (High) 🔴</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Người phụ trách & Deadline -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskAssignee" class="form-label">Người phụ trách</label>
+            <select id="taskAssignee" class="form-select">
+              <option value="">-- Chưa chỉ định --</option>
+              <!-- Loaded dynamically -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="taskDeadline" class="form-label">Hạn chót (Deadline) <span class="required">*</span></label>
+            <input type="datetime-local" id="taskDeadline" class="form-input" required />
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btnCancelModal">Hủy bỏ</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveTask">
+            <i class="fa-solid fa-floppy-disk"></i> Lưu Công Việc
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="/js/app.js"></script>
+</body>
+</html>

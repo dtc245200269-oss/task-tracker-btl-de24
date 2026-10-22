@@ -267,7 +267,7 @@ Tất cả 10 containers đều phải ở trạng thái `running` (hoặc `heal
 | Dịch Vụ | Địa Chỉ Truy Cập (Qua Nginx) | Tài Khoản / Mật Khẩu Mặc Định | Mô Tả |
 | :--- | :--- | :--- | :--- |
 | **TaskTracker Web** | `http://192.168.1.100/` hoặc `https://192.168.1.100/` | *Truy cập trực tiếp* | Quản lý công việc Kanban, Deadline, Cá nhân/Nhóm |
-| **pgAdmin 4** | `http://192.168.1.100/pgadmin/` | Email: `admin@tasktracker.local`<br>Pass: `AdminSecure2026!` | Quản trị giao diện CSDL PostgreSQL |
+| **pgAdmin 4** | `http://192.168.1.100/pgadmin/` | Email: `admin@tasktracker.com`<br>Pass: `AdminSecure2026!` | Quản trị giao diện CSDL PostgreSQL |
 | **Grafana** | `http://192.168.1.100/grafana/` | User: `admin`<br>Pass: `GrafanaSecure2026!` | Dashboard giám sát Container, Web & DB, xem Logs |
 | **Prometheus** | `http://192.168.1.100/prometheus/` | *Truy cập trực tiếp* | Máy chủ giám sát Metrics & PromQL Query |
 | **App Metrics** | `http://192.168.1.100/metrics` | *Truy cập trực tiếp* | Prometheus raw metrics từ Node.js prom-client |
@@ -287,7 +287,7 @@ Tất cả 10 containers đều phải ở trạng thái `running` (hoặc `heal
 ### 7.2. Quản trị Cơ sở dữ liệu với pgAdmin
 1. Mở trình duyệt: `http://192.168.1.100/pgadmin/`
 2. Đăng nhập với tài khoản:
-   - Email: `admin@tasktracker.local`
+   - Email: `admin@tasktracker.com`
    - Password: `AdminSecure2026!`
 3. Kết nối đến cơ sở dữ liệu PostgreSQL:
    - Chuột phải vào **Servers** -> Chọn **Register** -> **Server...**

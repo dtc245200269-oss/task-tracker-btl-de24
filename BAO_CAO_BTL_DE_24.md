@@ -307,7 +307,7 @@ Trong file `database/init.sql`, hệ thống được trang bị các kỹ thu�
 ## 3.4. Quản trị cơ sở dữ liệu qua giao diện pgAdmin 4
 Dịch vụ `pgadmin` được tích hợp trong Docker Compose, truy cập thuận tiện qua Nginx tại đường dẫn `http://<IP_VM>/pgadmin/`.
 - Thông tin đăng nhập mặc định:
-  - Email: `admin@tasktracker.local`
+  - Email: `admin@tasktracker.com`
   - Mật khẩu: `AdminSecure2026!`
 - Người quản trị có thể trực quan hóa toàn bộ lược đồ dữ liệu, kiểm tra bảng ghi, thực thi câu lệnh SQL trực tiếp và theo dõi dung lượng bảng.
 

@@ -80,6 +80,8 @@ services:
       - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:-AdminSecure2026!}
       - PGADMIN_CONFIG_SERVER_MODE=False
       - SCRIPT_NAME=/pgadmin
+    ports:
+      - "5050:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     networks:
@@ -173,6 +175,8 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.route-prefix=/prometheus'
       - '--web.external-url=/prometheus/'
+    ports:
+      - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -198,6 +202,8 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    ports:
+      - "3001:3000"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards/json:/etc/grafana/dashboards:ro

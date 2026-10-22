@@ -3,9 +3,10 @@ apiVersion: 1
 datasources:
   # 1. Prometheus Datasource (Thu thập Metrics)
   - name: Prometheus
+    uid: Prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://prometheus:9090/prometheus
     isDefault: true
     editable: true
     jsonData:
@@ -14,6 +15,7 @@ datasources:
 
   # 2. Loki Datasource (Thu thập và truy vấn Logs với LogQL)
   - name: Loki
+    uid: Loki
     type: loki
     access: proxy
     url: http://loki:3100

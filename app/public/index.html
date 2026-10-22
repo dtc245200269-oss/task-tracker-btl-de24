@@ -1861,11 +1861,21 @@
     // INITIALIZATION ON PAGE LOAD
     // ==========================================
     document.addEventListener('DOMContentLoaded', () => {
-      // Check saved theme
+      // Mặc định luôn khởi động với giao diện Sáng (Light Theme) tinh tế, hiện đại
+      if (localStorage.getItem('taskflow_light_v3') !== 'true') {
+        localStorage.removeItem('taskflow_theme');
+        localStorage.setItem('taskflow_light_v3', 'true');
+        document.body.classList.remove('dark-mode');
+      }
+
       if (localStorage.getItem('taskflow_theme') === 'dark') {
         document.body.classList.add('dark-mode');
         document.getElementById('themeToggleText').textContent = 'Sáng';
         document.querySelector('#btnThemeToggle i').className = 'fa-solid fa-sun';
+      } else {
+        document.body.classList.remove('dark-mode');
+        document.getElementById('themeToggleText').textContent = 'Tối';
+        document.querySelector('#btnThemeToggle i').className = 'fa-solid fa-moon';
       }
 
       // Load data

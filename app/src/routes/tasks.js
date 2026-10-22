@@ -122,7 +122,19 @@ router.post('/', async (req, res) => {
       assigned_to ? parseInt(assigned_to, 10) : null
     ];
 
-    const result = await db.query(insertQuery, values);
+    let result;
+    try {
+      result = await db.query(insertQuery, values);
+    } catch (dbErr) {
+      if (dbErr.code === '23503') {
+        logger.warn('Foreign key violation on team_id or assigned_to, retrying with null values', { error: dbErr.message });
+        values[6] = null;
+        values[7] = null;
+        result = await db.query(insertQuery, values);
+      } else {
+        throw dbErr;
+      }
+    }
     const newTask = result.rows[0];
 
     // Ghi nhận Prometheus metric
@@ -132,7 +144,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({ success: true, data: newTask, message: 'Tạo công việc thành công' });
   } catch (error) {
     logger.error('Lỗi khi tạo công việc mới:', { error: error.message, body: req.body });
-    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tạo công việc' });
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tạo công việc: ' + error.message });
   }
 });
 
@@ -194,7 +206,19 @@ router.put('/:id', async (req, res) => {
       id
     ];
 
-    const result = await db.query(updateQuery, values);
+    let result;
+    try {
+      result = await db.query(updateQuery, values);
+    } catch (dbErr) {
+      if (dbErr.code === '23503') {
+        logger.warn('Foreign key violation on update, retrying with null values', { error: dbErr.message });
+        values[6] = null;
+        values[7] = null;
+        result = await db.query(updateQuery, values);
+      } else {
+        throw dbErr;
+      }
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy công việc' });

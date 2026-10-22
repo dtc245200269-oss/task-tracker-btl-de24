@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'TaskTracker Dashboards'
+    orgId: 1
+    folder: 'TaskTracker System'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

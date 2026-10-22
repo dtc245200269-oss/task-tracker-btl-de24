@@ -1,0 +1,43 @@
+# ==========================================================
+# Prometheus Configuration
+# Giám sát Toàn diện: Web App, Database PostgreSQL, Containers, Host
+# ==========================================================
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  scrape_timeout: 5s
+
+scrape_configs:
+  # 1. Giám sát chính ứng dụng Web (TaskTracker Node.js Express)
+  - job_name: 'tasktracker-app'
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['app:3000']
+        labels:
+          service: 'tasktracker-web'
+          environment: 'production'
+
+  # 2. Giám sát Database PostgreSQL qua postgres-exporter
+  - job_name: 'postgres-db'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgresql-database'
+          environment: 'production'
+
+  # 3. Giám sát hiệu năng và tài nguyên Container (cAdvisor)
+  - job_name: 'docker-containers'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'container-engine'
+          environment: 'production'
+
+  # 4. Giám sát chính bản thân máy chủ Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

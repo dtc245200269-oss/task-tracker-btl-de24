@@ -99,6 +99,7 @@ Báo cáo này trình bày chi tiết toàn bộ cơ sở lý thuyết, kiến t
   - 10.1. Bảng đối chiếu kết quả với tiêu chí đánh giá
   - 10.2. Kịch bản các bước demo trực tiếp
   - 10.3. Đánh giá ưu điểm và hạn chế
+- **CHƯƠNG 11: NHẬT KÝ THỰC HIỆN TỪNG BƯỚC TRÊN MÁY ẢO (MINH CHỨNG THỰC TẾ)**
 - **KẾT LUẬN & HƯỚNG PHÁT TRIỂN**
 - **TÀI LIỆU THAM KHẢO**
 
@@ -330,12 +331,36 @@ Dịch vụ `pgadmin` được tích hợp trong Docker Compose, truy cập thu�
   - `DELETE /api/tasks/:id`: Xóa công việc.
 - `src/routes/stats.js`: Thống kê tổng hợp số lượng công việc theo trạng thái, số lượng quá hạn và cập nhật metric Prometheus `taskGauge`.
 
-## 4.2. Giao diện Frontend: Kanban Board & List View
-Frontend được phát triển theo xu hướng thiết kế Dark Modern UI kết hợp hiệu ứng kính mờ (Glassmorphism):
-- **Bảng Kanban trực quan:** 4 cột trạng thái màu sắc riêng biệt, hiển thị thẻ công việc với huy hiệu ưu tiên (Priority Badge), người phụ trách, nhãn nhóm/cá nhân, deadline và các nút bấm chuyển nhanh trạng thái.
-- **Chế độ xem bảng (List View):** Trình bày dạng bảng chi tiết phù hợp cho việc rà soát số lượng lớn công việc.
-- **Thống kê thời gian thực (Real-time Counters):** 4 thẻ chỉ số ở đầu trang liên tục cập nhật tổng số task, task đang làm, task hoàn thành và task quá hạn.
-- **Thanh công cụ lọc:** Tìm kiếm tức thời (Debounce search), lọc theo Cá nhân / Nhóm, lọc theo Mức độ ưu tiên.
+## 4.2. Giao diện Frontend: SPA Vanilla không phụ thuộc CDN
+Frontend được viết lại hoàn chỉnh bằng HTML/CSS/JavaScript thuần (vanilla), **không sử dụng bất kỳ CDN hay thư viện ngoài nào** (không Google Fonts, không Font Awesome, không Chart.js) nhằm bảo đảm hệ thống hoạt động ổn định ngay cả khi máy ảo VMware không có kết nối Internet. Thiết kế theo phong cách Linear/Notion với hai chế độ sáng (light) và tối (dark) lưu vào `localStorage`.
+
+Bốn màn hình chức năng chính:
+- **Bảng công việc (List View):** danh sách thẻ công việc kèm badge trạng thái, badge ưu tiên, nhãn nhóm/cá nhân, deadline (tô đỏ khi quá hạn), avatar người phụ trách; mỗi hàng có select đổi trạng thái nhanh, nút sửa và nút xóa (có hộp thoại xác nhận).
+- **Kanban Board:** 4 cột `Chưa bắt đầu / Đang làm / Chờ duyệt / Hoàn thành`, kéo-thả thẻ giữa các cột bằng HTML5 Drag-and-Drop, mỗi lần thả gọi `PATCH /api/tasks/:id/status` và tự vẽ lại bảng.
+- **Nhóm:** lưới thẻ nhóm (số thành viên, số công việc), tạo nhóm mới qua modal và xem danh sách thành viên của từng nhóm.
+- **Thống kê:** 4 thẻ chỉ số (Tổng, Đang thực hiện, Hoàn thành, Quá hạn) cùng 3 biểu đồ vẽ bằng SVG tự viết (donut theo trạng thái, thanh ngang theo ưu tiên, donut cá nhân/nhóm) lấy số liệu từ `GET /api/stats/summary`.
+
+Các yêu cầu phi chức năng của giao diện:
+- Mọi thao tác tạo/sửa/xóa/lọc đều gọi REST API thật, dữ liệu persist vào PostgreSQL (không dùng localStorage cho dữ liệu nghiệp vụ).
+- Toast thông báo thành công/lỗi lấy message trực tiếp từ server; nút bấm có trạng thái loading chống double-submit; ô tìm kiếm debounce 300ms; skeleton loading và empty state cho mọi danh sách.
+- Responsive: sidebar thu thành thanh ngang dưới 900px, Kanban cuộn ngang trên mobile.
+- Định tuyến sâu bằng hash (`#/list`, `#/kanban`, `#/teams`, `#/stats`) thuận tiện demo và chụp minh chứng.
+
+Giao diện được kiểm chứng tự động bằng bộ test chức năng chạy trên Chrome headless (47 khẳng định: CRUD, kéo-thả Kanban, lọc, tìm kiếm, tạo nhóm, thành viên, biểu đồ, dark mode, health-check) — toàn bộ đạt PASS trước khi triển khai lên máy ảo.
+
+**Minh chứng giao diện thực tế:**
+
+![Bảng công việc](docs/images/ui-list.png)
+*Hình 4.1 - Màn hình Bảng công việc với bộ lọc và thẻ trạng thái*
+
+![Kanban](docs/images/ui-kanban.png)
+*Hình 4.2 - Màn hình Kanban kéo-thả 4 cột trạng thái*
+
+![Nhóm](docs/images/ui-teams.png)
+*Hình 4.3 - Màn hình quản lý nhóm làm việc*
+
+![Thống kê](docs/images/ui-stats.png)
+*Hình 4.4 - Màn hình thống kê với biểu đồ SVG tự vẽ*
 
 ## 4.3. Tích hợp Prometheus Metrics (`prom-client`)
 File `src/metrics.js` sử dụng thư viện `prom-client` chính thống để phơi bày các số liệu quan trọng tại endpoint `/metrics`:
@@ -527,18 +552,20 @@ ufw enable
    *(Sao chép nội dung public key và thêm vào GitHub Settings -> SSH and GPG keys)*.
 
 ## 9.2. Lịch sử 03 Commit chuẩn quy định
-Theo đúng tiêu chí chấm điểm, mã nguồn được phân chia thành 3 mốc commit rõ ràng:
+Theo đúng tiêu chí chấm điểm, mã nguồn được phân chia thành 3 mốc commit rõ ràng (hash thực tế trên repository):
 
 ```bash
-# COMMIT 1: Cốt lõi ứng dụng, Database và Nginx Reverse Proxy
+# COMMIT 1 (2b2841c): Cốt lõi ứng dụng, Database và Nginx Reverse Proxy
 git commit -m "feat(core): implement Task Tracker web app, PostgreSQL, pgAdmin and Nginx reverse proxy with SSL"
 
-# COMMIT 2: Giám sát toàn diện Prometheus & Grafana
+# COMMIT 2 (791da9a): Giám sát toàn diện Prometheus & Grafana
 git commit -m "feat(monitoring): integrate Prometheus metrics scrapers and Grafana dashboard for container, web, and DB"
 
-# COMMIT 3: Hệ thống Log tập trung Loki, Promtail và Hardening
+# COMMIT 3 (ae9a24a): Hệ thống Log tập trung Loki, Promtail và Hardening
 git commit -m "feat(observability&security): deploy centralized Loki logging, Promtail, and system hardening configurations"
 ```
+
+Sau 3 mốc commit bắt buộc, repository tiếp tục nhận các commit cải tiến có nội dung rõ ràng (fix nginx routing, fix grafana provisioning, redesign UI, rewrite frontend vanilla commit `8c011f0`...), tổng cộng 23 commit tại thời điểm nộp bài — thể hiện quá trình làm việc thật, liên tục và có thể truy vết.
 
 ## 9.3. Các bước clone và khởi chạy hệ thống bằng Docker Compose
 Trên máy ảo VMware, sinh viên thực hiện qua SSH:
@@ -584,10 +611,11 @@ Khi trình bày trước Hội đồng chấm thi, sinh viên thực hiện tu�
    - Mở cửa sổ SSH vào VMware.
    - Chạy lệnh `docker compose ps` để chứng minh 10 containers đang trong trạng thái `Up (healthy)`.
 3. **Bước 3 - Demo Website Task Tracker:**
-   - Truy cập trình duyệt `http://192.168.180.128/`.
-   - Tạo một công việc mới: Tiêu đề "Kiểm thử hệ thống", chọn loại "Nhóm", độ ưu tiên "Cao", gán deadline.
-   - Thao tác chuyển trạng thái giữa các cột Kanban (To Do -> In Progress -> Done).
-   - Chuyển sang dạng Danh Sách (List View) và thử tìm kiếm bằng ô Search.
+   - Truy cập trình duyệt `https://192.168.180.128/` (chấp nhận cảnh báo SSL tự ký).
+   - Tạo một công việc mới: Tiêu đề "Kiểm thử hệ thống", chọn loại "Nhóm", độ ưu tiên "Cao", gán deadline và người phụ trách.
+   - Thao tác kéo-thả thẻ giữa các cột Kanban (Chưa bắt đầu -> Đang làm -> Hoàn thành).
+   - Chuyển sang tab **Bảng công việc**, thử 4 bộ lọc và ô tìm kiếm; sửa và xóa một task để chứng minh CRUD đầy đủ.
+   - Mở tab **Nhóm** tạo nhóm mới, tab **Thống kê** chỉ ra 4 thẻ số và 3 biểu đồ SVG; bấm đổi chế độ dark/light.
 4. **Bước 4 - Demo pgAdmin:**
    - Truy cập `http://192.168.180.128/pgadmin/`.
    - Đăng nhập và mở bảng `tasks` để chứng minh công việc vừa tạo trên Web đã được lưu thành công vào PostgreSQL.
@@ -602,6 +630,89 @@ Khi trình bày trước Hội đồng chấm thi, sinh viên thực hiện tu�
    - Chạy lệnh `docker exec tasktracker-app whoami` -> Kết quả hiển thị `node` (non-root).
    - Chạy lệnh `sudo ufw status` -> Chứng minh tường lửa đang bật và chỉ mở cổng 22, 80, 443.
    - Chạy lệnh `sudo systemctl status fail2ban` -> Chứng minh dịch vụ chống Brute-force đang giám sát.
+
+---
+
+# CHƯƠNG 11: NHẬT KÝ THỰC HIỆN TỪNG BƯỚC TRÊN MÁY ẢO (MINH CHỨNG THỰC TẾ)
+
+Chương này ghi lại tuần tự các bước đã thực hiện thật trong phiên làm việc ngày 24/10/2026, từ máy phát triển Windows đến máy ảo VMware Ubuntu 20.04 (IP `192.168.180.128`) qua SSH.
+
+## Bước 1: Hoàn thiện và đẩy mã nguồn lên GitHub (máy Windows)
+```powershell
+git add app/public/index.html app/public/css/style.css app/public/js/app.js
+git commit -m "feat(ui): rewrite frontend as offline-safe vanilla SPA with full CRUD, kanban DnD, teams and SVG stats"
+git push origin main
+# Kết quả: [main 8c011f0] ... 3 files changed, 1432 insertions(+), 3717 deletions(-)
+#          f4c2e97..8c011f0  main -> main
+```
+
+## Bước 2: Kết nối SSH từ Windows PowerShell vào máy ảo VMware
+```powershell
+ssh ngocson@192.168.180.128
+# Kết quả: đăng nhập thành công, màn hình MOTD Ubuntu hiển thị IP ens33 = 192.168.180.128
+```
+
+## Bước 3: Cập nhật mã nguồn mới nhất trên máy ảo
+```bash
+cd ~/task-tracker-btl-de24 && git pull origin main
+# Kết quả: Fast-forward f4c2e97..8c011f0, 3 files changed (đúng 3 file frontend vừa push)
+```
+
+## Bước 4: Khởi động / kiểm tra toàn bộ 10 container
+```bash
+docker compose ps
+# Kết quả: 10 container đều Up:
+#   tasktracker-app (healthy), tasktracker-cadvisor (healthy), tasktracker-grafana,
+#   tasktracker-loki, tasktracker-nginx, tasktracker-pgadmin, tasktracker-postgres (healthy),
+#   tasktracker-postgres-exporter, tasktracker-prometheus, tasktracker-promtail
+```
+Do `docker-compose.yml` bind-mount thư mục `./app/public` vào container `app` ở chế độ chỉ đọc, giao diện mới có hiệu lực ngay mà không cần build lại image.
+
+## Bước 5: Kiểm tra sức khỏe hệ thống và xác nhận UI mới đã phục vụ
+```bash
+curl -k https://localhost/health
+# {"status":"UP","database":"connected","timestamp":"2026-10-24T21:38:42.961Z"}
+curl -k https://localhost/ | grep -c "fonts.googleapis"
+# 0  -> UI mới không phụ thuộc CDN, chạy được khi máy ảo mất Internet
+curl -k https://localhost/css/style.css | head -2
+# Trả về design system mới (Linear/Notion inspired)
+```
+
+## Bước 6: Truy cập web qua trình duyệt Windows (HTTPS tự ký)
+Mở `https://192.168.180.128` → trình duyệt cảnh báo `NET::ERR_CERT_AUTHORITY_INVALID` (đúng bản chất chứng chỉ tự ký theo yêu cầu đề bài) → chọn **Advanced → Proceed to 192.168.180.128 (unsafe)** → giao diện TaskTracker Pro hiển thị.
+
+## Bước 7: Kịch bản test chức năng trên giao diện thật
+1. Bấm **+ Tạo công việc** → điền tiêu đề, deadline, ưu tiên Cao, loại Nhóm, chọn nhóm và người phụ trách → Lưu → thẻ mới xuất hiện kèm toast thành công.
+2. Kéo thẻ từ cột *Chưa bắt đầu* sang *Hoàn thành* → cột cập nhật tức thì, dữ liệu persist vào PostgreSQL.
+3. Sửa tiêu đề bằng nút bút chì; xóa một task bằng nút thùng rác (hộp thoại xác nhận hiện đúng).
+4. Gõ từ khóa vào ô tìm kiếm và dùng 4 bộ lọc (trạng thái, ưu tiên, loại, nhóm) → danh sách co lại đúng điều kiện, đếm số kết quả.
+5. Tab **Nhóm**: tạo nhóm mới, bấm *Xem thành viên* → modal liệt kê thành viên từ bảng `team_members`.
+6. Tab **Thống kê**: 4 thẻ số và 3 biểu đồ SVG render đúng số liệu của `GET /api/stats/summary`.
+7. Bấm nút mặt trăng/mặt trời góc trái dưới → đổi dark/light mode, reload trang vẫn giữ chế độ đã chọn.
+
+## Bước 8: Kiểm tra các dịch vụ vệ tinh qua Nginx
+| Dịch vụ | URL truy cập | Kết quả |
+| :--- | :--- | :--- |
+| Web app | `https://192.168.180.128/` | Giao diện TaskTracker Pro |
+| pgAdmin 4 | `https://192.168.180.128/pgadmin/` (hoặc port 5050) | Đăng nhập, mở bảng `tasks` thấy dữ liệu vừa tạo |
+| Grafana | `https://192.168.180.128/grafana/` (hoặc port 3001) | Dashboard giám sát + Explore Loki |
+| Prometheus | `https://192.168.180.128/prometheus/` (hoặc port 9091) | Targets app/postgres/cadvisor đều UP |
+
+## Bước 9: Truy vấn LogQL minh chứng hệ thống log (Grafana → Explore → Loki)
+```logql
+{job="tasktracker-app"} |= "error"
+{job="tasktracker-app"} | json | method="POST"
+sum(rate({job="tasktracker-nginx"}[5m])) by (service)
+```
+Cả 3 truy vấn trả về kết quả trực tiếp trên giao diện, thỏa mãn yêu cầu "ít nhất 2-3 query LogQL".
+
+## Bước 10: Minh chứng hardening trên máy ảo
+```bash
+docker exec tasktracker-app whoami      # -> node (container không chạy root)
+sudo ufw status                          # -> chỉ mở 22, 80, 443
+sudo systemctl status fail2ban           # -> active (chống brute-force SSH)
+docker network ls                        # -> 3 mạng cách ly frontend/backend/monitoring
+```
 
 ---
 

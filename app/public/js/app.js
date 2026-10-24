@@ -1,730 +1,742 @@
-/**
- * TASKFLOW PRO - Modern SPA Engine
- * Full Drag-and-Drop, Realtime Analytics & Responsive Kanban
- */
+'use strict';
 
-// Application State
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+
+const STATUS_META = {
+  todo:        { label: 'Chưa bắt đầu', color: 'gray',  hex: '#8b919c' },
+  in_progress: { label: 'Đang làm',     color: 'blue',  hex: '#2563eb' },
+  review:      { label: 'Chờ duyệt',    color: 'amber', hex: '#d97706' },
+  done:        { label: 'Hoàn thành',   color: 'green', hex: '#188544' }
+};
+const STATUS_ORDER = ['todo', 'in_progress', 'review', 'done'];
+
+const PRIORITY_META = {
+  high:   { label: 'Cao',  color: 'red',   hex: '#cf3434' },
+  medium: { label: 'Vừa',  color: 'amber', hex: '#d97706' },
+  low:    { label: 'Thấp', color: 'gray',  hex: '#8b919c' }
+};
+
+const TYPE_META = {
+  personal: { label: 'Cá nhân', hex: '#5e6ad2' },
+  team:     { label: 'Nhóm',    hex: '#0e7490' }
+};
+
 const state = {
+  view: 'list',
   tasks: [],
   teams: [],
   users: [],
-  filters: {
-    type: '',       // '' | 'personal' | 'team'
-    priority: '',   // '' | 'high' | 'medium' | 'low'
-    search: '',
-  },
-  currentView: 'kanban', // 'kanban' | 'list'
+  filters: { status: '', priority: '', type: '', team_id: '', search: '' },
   editingTaskId: null,
-  draggedTaskId: null,
-  charts: {
-    status: null,
-    priority: null,
+  metaLoaded: false
+};
+
+/* ================================ API ================================ */
+
+async function api(path, options) {
+  const opts = Object.assign({ headers: { 'Content-Type': 'application/json' } }, options || {});
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (netErr) {
+    throw new Error('Không thể kết nối máy chủ. Kiểm tra lại container app.');
   }
-};
+  let body = null;
+  try { body = await res.json(); } catch (parseErr) { body = null; }
+  if (!res.ok || (body && body.success === false)) {
+    throw new Error((body && body.message) || ('Lỗi máy chủ (HTTP ' + res.status + ')'));
+  }
+  return body || { success: true };
+}
 
-// DOM References
-const elements = {
-  // KPI Elements
-  kpiTotal: document.getElementById('kpiTotal'),
-  kpiInProgress: document.getElementById('kpiInProgress'),
-  kpiDone: document.getElementById('kpiDone'),
-  kpiOverdue: document.getElementById('kpiOverdue'),
-  kpiPercentDone: document.getElementById('kpiPercentDone'),
-  sidebarTotalBadge: document.getElementById('sidebarTotalBadge'),
-  dbStatusText: document.getElementById('dbStatusText'),
+const apiGet    = (p) => api(p);
+const apiPost   = (p, data) => api(p, { method: 'POST',   body: JSON.stringify(data) });
+const apiPut    = (p, data) => api(p, { method: 'PUT',    body: JSON.stringify(data) });
+const apiPatch  = (p, data) => api(p, { method: 'PATCH',  body: JSON.stringify(data) });
+const apiDelete = (p) => api(p, { method: 'DELETE' });
 
-  // Filters & Search
-  searchInput: document.getElementById('searchInput'),
-  btnClearSearch: document.getElementById('btnClearSearch'),
-  typeFilters: document.getElementById('typeFilters'),
-  priorityFilter: document.getElementById('priorityFilter'),
+/* ============================== HELPERS ============================== */
 
-  // Views & Sections
-  kanbanBoard: document.getElementById('kanbanBoard'),
-  listView: document.getElementById('listView'),
-  analyticsSection: document.getElementById('analyticsSection'),
-  listTableBody: document.getElementById('listTableBody'),
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
-  // Columns & Counts
-  cardsTodo: document.getElementById('cardsTodo'),
-  cardsInProgress: document.getElementById('cardsInProgress'),
-  cardsReview: document.getElementById('cardsReview'),
-  cardsDone: document.getElementById('cardsDone'),
-  countTodo: document.getElementById('countTodo'),
-  countInProgress: document.getElementById('countInProgress'),
-  countReview: document.getElementById('countReview'),
-  countDone: document.getElementById('countDone'),
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear();
+}
 
-  // Navigation Items
-  navKanban: document.getElementById('navKanban'),
-  navList: document.getElementById('navList'),
-  navAnalytics: document.getElementById('navAnalytics'),
+function isOverdue(task) {
+  if (!task.deadline || task.status === 'done') return false;
+  return new Date(task.deadline).getTime() < Date.now();
+}
 
-  // Modal
-  taskModal: document.getElementById('taskModal'),
-  taskForm: document.getElementById('taskForm'),
-  modalTitle: document.getElementById('modalTitle'),
-  taskIdInput: document.getElementById('taskId'),
-  taskTitle: document.getElementById('taskTitle'),
-  taskDescription: document.getElementById('taskDescription'),
-  taskType: document.getElementById('taskType'),
-  taskTeam: document.getElementById('taskTeam'),
-  teamSelectBlock: document.getElementById('teamSelectBlock'),
-  taskStatus: document.getElementById('taskStatus'),
-  taskPriority: document.getElementById('taskPriority'),
-  taskAssignee: document.getElementById('taskAssignee'),
-  taskDeadline: document.getElementById('taskDeadline'),
-  btnOpenNewTaskModal: document.getElementById('btnOpenNewTaskModal'),
-  btnCloseModal: document.getElementById('btnCloseModal'),
-  btnCancelModal: document.getElementById('btnCancelModal'),
+function initials(name) {
+  const parts = String(name || '?').trim().split(/\s+/);
+  const last = parts[parts.length - 1] || '?';
+  return last.slice(0, 2);
+}
 
-  // Toasts
-  toastContainer: document.getElementById('toastContainer'),
-};
+function avatarColorClass(id) {
+  return 'c' + (Number(id) % 6);
+}
 
-// ============================================================================
-// TOAST NOTIFICATIONS
-// ============================================================================
-function showToast(message, type = 'success') {
-  const toast = document.createElement('div');
-  toast.className = `toast-msg toast-${type}`;
-  const icon = type === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation';
-  toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${escapeHTML(message)}</span>`;
-  elements.toastContainer.appendChild(toast);
+function debounce(fn, wait) {
+  let t = null;
+  return function () {
+    const args = arguments;
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(null, args), wait);
+  };
+}
 
+function toast(message, type) {
+  const box = $('#toastContainer');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'success');
+  el.textContent = message;
+  box.appendChild(el);
   setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(100%)';
-    toast.style.transition = 'all 0.3s ease-in';
-    setTimeout(() => toast.remove(), 300);
-  }, 3200);
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 200);
+  }, 3600);
 }
 
-// ============================================================================
-// API DATA SYNC
-// ============================================================================
-async function fetchTasks() {
-  try {
-    const params = new URLSearchParams();
-    if (state.filters.type) params.append('type', state.filters.type);
-    if (state.filters.priority) params.append('priority', state.filters.priority);
-    if (state.filters.search) params.append('search', state.filters.search);
-
-    const res = await fetch(`/api/tasks?${params.toString()}`);
-    const data = await res.json();
-    if (data.success) {
-      state.tasks = data.data;
-      renderTasks();
-    }
-  } catch (err) {
-    showToast('Lỗi khi tải danh sách công việc', 'error');
+function setLoading(btn, loading, label) {
+  if (loading) {
+    btn.dataset.label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = label || 'Đang xử lý...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.label || label || btn.textContent;
   }
 }
 
-async function fetchStats() {
-  try {
-    const res = await fetch('/api/stats/summary');
-    const data = await res.json();
-    if (data.success) {
-      const { total, overdue, byStatus, byPriority } = data.data;
-
-      // Update KPI banner
-      elements.kpiTotal.textContent = total;
-      elements.sidebarTotalBadge.textContent = total;
-      elements.kpiOverdue.textContent = overdue;
-
-      const inProgressCount = byStatus.find(s => s.status === 'in_progress')?.count || 0;
-      const doneCount = byStatus.find(s => s.status === 'done')?.count || 0;
-
-      elements.kpiInProgress.textContent = inProgressCount;
-      elements.kpiDone.textContent = doneCount;
-
-      const percent = total > 0 ? Math.round((doneCount / total) * 100) : 0;
-      elements.kpiPercentDone.textContent = `${percent}% hoàn thành`;
-
-      // Update Charts
-      updateCharts(byStatus, byPriority);
-    }
-  } catch (err) {
-    console.error('Stats error:', err);
-  }
+function openModal(id) {
+  $('#' + id).hidden = false;
 }
 
-async function fetchMetadata() {
-  try {
-    // Teams
-    const teamsRes = await fetch('/api/teams');
-    const teamsData = await teamsRes.json();
-    if (teamsData.success) {
-      state.teams = teamsData.data;
-      populateTeams();
-    }
-
-    // Users
-    const usersRes = await fetch('/api/teams/users/all');
-    const usersData = await usersRes.json();
-    if (usersData.success) {
-      state.users = usersData.data;
-      populateUsers();
-    }
-  } catch (err) {
-    console.error('Metadata error:', err);
-  }
+function closeModal(id) {
+  $('#' + id).hidden = true;
 }
+
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    $('#confirmText').textContent = message;
+    openModal('confirmDialog');
+    const ok = $('#confirmOk');
+    const cancel = $('#confirmCancel');
+    const backdrop = $('#confirmDialog');
+    const cleanup = (result) => {
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      backdrop.removeEventListener('mousedown', onBackdrop);
+      closeModal('confirmDialog');
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onBackdrop = (e) => { if (e.target === backdrop) cleanup(false); };
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    backdrop.addEventListener('mousedown', onBackdrop);
+  });
+}
+
+/* ============================== THEME ============================== */
+
+function initTheme() {
+  const saved = localStorage.getItem('tt-theme');
+  const theme = saved === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = theme;
+  $('#themeToggle').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('tt-theme', next);
+  });
+}
+
+/* ============================== HEALTH ============================== */
 
 async function checkHealth() {
+  const pill = $('#healthPill');
+  const text = $('#healthText');
   try {
     const res = await fetch('/health');
-    const data = await res.json();
-    if (data.status === 'UP') {
-      elements.dbStatusText.textContent = 'PostgreSQL 16 OK';
-      elements.dbStatusText.className = 'text-emerald';
+    const body = await res.json();
+    if (res.ok && body.status === 'UP') {
+      pill.className = 'health-pill up';
+      text.textContent = 'Hệ thống hoạt động';
+      return;
     }
-  } catch {
-    elements.dbStatusText.textContent = 'Mất kết nối DB';
-    elements.dbStatusText.className = 'text-rose';
-  }
-}
-
-// ============================================================================
-// CHARTS (Chart.js Integration)
-// ============================================================================
-function updateCharts(byStatus, byPriority) {
-  if (typeof Chart === 'undefined') return;
-
-  // 1. Status Doughnut Chart
-  const statusLabels = { todo: 'Cần làm', in_progress: 'Đang làm', review: 'Đánh giá', done: 'Hoàn thành' };
-  const statusColors = { todo: '#94A3B8', in_progress: '#F59E0B', review: '#A855F7', done: '#10B981' };
-
-  const sKeys = ['todo', 'in_progress', 'review', 'done'];
-  const sData = sKeys.map(k => byStatus.find(s => s.status === k)?.count || 0);
-
-  const statusCtx = document.getElementById('statusChart');
-  if (statusCtx) {
-    if (state.charts.status) {
-      state.charts.status.data.datasets[0].data = sData;
-      state.charts.status.update();
-    } else {
-      state.charts.status = new Chart(statusCtx, {
-        type: 'doughnut',
-        data: {
-          labels: sKeys.map(k => statusLabels[k]),
-          datasets: [{
-            data: sData,
-            backgroundColor: sKeys.map(k => statusColors[k]),
-            borderWidth: 2,
-            borderColor: '#0D121F'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { color: '#94A3B8', font: { family: 'Plus Jakarta Sans', size: 11 } } }
-          },
-          cutout: '70%'
-        }
-      });
-    }
-  }
-
-  // 2. Priority Bar Chart
-  const pKeys = ['high', 'medium', 'low'];
-  const pLabels = ['Cao 🔴', 'Trung bình 🟡', 'Thấp 🟢'];
-  const pColors = ['#F43F5E', '#F59E0B', '#10B981'];
-  const pData = pKeys.map(k => byPriority.find(p => p.priority === k)?.count || 0);
-
-  const priorityCtx = document.getElementById('priorityChart');
-  if (priorityCtx) {
-    if (state.charts.priority) {
-      state.charts.priority.data.datasets[0].data = pData;
-      state.charts.priority.update();
-    } else {
-      state.charts.priority = new Chart(priorityCtx, {
-        type: 'bar',
-        data: {
-          labels: pLabels,
-          datasets: [{
-            label: 'Số lượng công việc',
-            data: pData,
-            backgroundColor: pColors,
-            borderRadius: 6,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { beginAtZero: true, ticks: { precision: 0, color: '#64748B' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            x: { ticks: { color: '#94A3B8' }, grid: { display: false } }
-          },
-          plugins: { legend: { display: false } }
-        }
-      });
-    }
-  }
-}
-
-// ============================================================================
-// DRAG & DROP HANDLERS (Native HTML5 API)
-// ============================================================================
-window.handleDragStart = function(event, taskId) {
-  state.draggedTaskId = taskId;
-  event.currentTarget.classList.add('dragging');
-  event.dataTransfer.setData('text/plain', taskId);
-  event.dataTransfer.effectAllowed = 'move';
-};
-
-window.handleDragEnd = function(event) {
-  event.currentTarget.classList.remove('dragging');
-  document.querySelectorAll('.card-drop-zone').forEach(z => z.classList.remove('drag-active'));
-};
-
-window.handleDragOver = function(event) {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'move';
-  const dropZone = event.currentTarget.closest('.card-drop-zone');
-  if (dropZone) dropZone.classList.add('drag-active');
-};
-
-window.handleDragLeave = function(event) {
-  const dropZone = event.currentTarget.closest('.card-drop-zone');
-  if (dropZone && !dropZone.contains(event.relatedTarget)) {
-    dropZone.classList.remove('drag-active');
-  }
-};
-
-window.handleDrop = async function(event, targetStatus) {
-  event.preventDefault();
-  const dropZone = event.currentTarget.closest('.card-drop-zone');
-  if (dropZone) dropZone.classList.remove('drag-active');
-
-  const taskId = state.draggedTaskId || event.dataTransfer.getData('text/plain');
-  if (!taskId) return;
-
-  const currentTask = state.tasks.find(t => t.id === parseInt(taskId, 10));
-  if (currentTask && currentTask.status === targetStatus) return;
-
-  try {
-    const res = await fetch(`/api/tasks/${taskId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: targetStatus })
-    });
-    const data = await res.json();
-    if (data.success) {
-      const statusVN = { todo: 'Cần làm', in_progress: 'Đang làm', review: 'Đánh giá', done: 'Hoàn thành' };
-      showToast(`Đã chuyển công việc sang "${statusVN[targetStatus]}"!`);
-      fetchTasks();
-      fetchStats();
-    }
+    throw new Error('down');
   } catch (err) {
-    showToast('Lỗi cập nhật trạng thái', 'error');
-  } finally {
-    state.draggedTaskId = null;
-  }
-};
-
-// ============================================================================
-// RENDERERS
-// ============================================================================
-function renderTasks() {
-  if (state.currentView === 'kanban') {
-    renderKanban();
-  } else {
-    renderList();
+    pill.className = 'health-pill down';
+    text.textContent = 'Mất kết nối DB';
   }
 }
 
-function renderKanban() {
-  const groups = { todo: [], in_progress: [], review: [], done: [] };
-  state.tasks.forEach(t => {
-    if (groups[t.status]) groups[t.status].push(t);
-  });
+/* ============================== DATA LOAD ============================== */
 
-  elements.countTodo.textContent = groups.todo.length;
-  elements.countInProgress.textContent = groups.in_progress.length;
-  elements.countReview.textContent = groups.review.length;
-  elements.countDone.textContent = groups.done.length;
-
-  elements.cardsTodo.innerHTML = renderCardsList(groups.todo, 'todo');
-  elements.cardsInProgress.innerHTML = renderCardsList(groups.in_progress, 'in_progress');
-  elements.cardsReview.innerHTML = renderCardsList(groups.review, 'review');
-  elements.cardsDone.innerHTML = renderCardsList(groups.done, 'done');
+async function loadMeta() {
+  if (state.metaLoaded) return;
+  const [teamsRes, usersRes] = await Promise.all([
+    apiGet('/api/teams'),
+    apiGet('/api/teams/users/all')
+  ]);
+  state.teams = teamsRes.data || [];
+  state.users = usersRes.data || [];
+  state.metaLoaded = true;
+  populateFilterTeams();
+  populateFormSelects();
 }
 
-function renderCardsList(taskList, colStatus) {
-  if (taskList.length === 0) {
-    return `<div class="empty-col-notice"><i class="fa-regular fa-folder-open"></i> Chưa có việc</div>`;
+function populateFilterTeams() {
+  const sel = $('#filterTeam');
+  sel.innerHTML = '<option value="">Nhóm: tất cả</option>' + state.teams.map((t) =>
+    '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'
+  ).join('');
+}
+
+function populateFormSelects() {
+  $('#fTeam').innerHTML = '<option value="">-- Chọn nhóm --</option>' + state.teams.map((t) =>
+    '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'
+  ).join('');
+  $('#fAssignee').innerHTML = '<option value="">-- Chưa gán --</option>' + state.users.map((u) =>
+    '<option value="' + u.id + '">' + escapeHtml(u.full_name) + '</option>'
+  ).join('');
+}
+
+async function loadTasks() {
+  const f = state.filters;
+  const params = new URLSearchParams();
+  if (f.status) params.set('status', f.status);
+  if (f.priority) params.set('priority', f.priority);
+  if (f.type) params.set('type', f.type);
+  if (f.team_id) params.set('team_id', f.team_id);
+  if (f.search) params.set('search', f.search);
+  const qs = params.toString();
+  const res = await apiGet('/api/tasks' + (qs ? '?' + qs : ''));
+  state.tasks = res.data || [];
+}
+
+/* ============================== RENDER: LIST ============================== */
+
+function skeletonRows(count) {
+  let html = '';
+  for (let i = 0; i < count; i++) html += '<div class="skeleton"></div>';
+  return html;
+}
+
+function emptyStateHtml(message) {
+  return '<div class="empty-state">' +
+    '<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
+    '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg>' +
+    '<p>' + escapeHtml(message) + '</p></div>';
+}
+
+function taskMetaHtml(task) {
+  const st = STATUS_META[task.status] || STATUS_META.todo;
+  const pr = PRIORITY_META[task.priority] || PRIORITY_META.medium;
+  let html = '';
+  html += '<span class="badge ' + st.color + '"><span class="dot"></span>' + st.label + '</span>';
+  html += '<span class="badge ' + pr.color + '">Ưu tiên: ' + pr.label + '</span>';
+  html += '<span class="badge ' + (task.type === 'team' ? 'accent' : 'gray') + '">' +
+          (TYPE_META[task.type] ? TYPE_META[task.type].label : task.type) + '</span>';
+  if (task.deadline) {
+    html += '<span class="deadline' + (isOverdue(task) ? ' overdue' : '') + '">' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+      formatDate(task.deadline) + (isOverdue(task) ? ' (quá hạn)' : '') + '</span>';
   }
-
-  return taskList.map(task => {
-    const priorityLabels = { high: 'Cao', medium: 'Trung bình', low: 'Thấp' };
-    const typeBadge = task.type === 'team'
-      ? `<span class="tag-badge tag-team"><i class="fa-solid fa-users"></i> ${escapeHTML(task.team_name || 'Nhóm')}</span>`
-      : `<span class="tag-badge tag-personal"><i class="fa-solid fa-user"></i> Cá nhân</span>`;
-
-    const deadlineInfo = computeDeadlineNotice(task.deadline, task.status);
-
-    const stepButtons = getTransitionButtons(task.status, task.id);
-
-    return `
-      <div class="task-item" 
-           draggable="true" 
-           ondragstart="handleDragStart(event, ${task.id})"
-           ondragend="handleDragEnd(event)"
-           onclick="handleCardClick(event, ${task.id})">
-        
-        <div class="task-top">
-          <div class="task-tags">
-            ${typeBadge}
-            <span class="tag-badge priority-${task.priority}">${priorityLabels[task.priority] || task.priority}</span>
-          </div>
-        </div>
-
-        <h4 class="task-title-text">${escapeHTML(task.title)}</h4>
-        ${task.description ? `<p class="task-desc-text">${escapeHTML(task.description)}</p>` : ''}
-
-        <div class="task-bottom">
-          <span class="deadline-chip ${deadlineInfo.isOverdue ? 'is-overdue' : ''}">
-            <i class="fa-regular fa-clock"></i> ${deadlineInfo.text}
-          </span>
-
-          <div class="assignee-bubble" title="${escapeHTML(task.assigned_user_name || 'Chưa gán')}">
-            ${task.assigned_user_name ? task.assigned_user_name.charAt(0).toUpperCase() : '?'}
-          </div>
-        </div>
-
-        <div class="task-actions" onclick="event.stopPropagation()">
-          ${stepButtons}
-          <button class="btn-step" onclick="openEditModal(${task.id})" title="Chỉnh sửa"><i class="fa-solid fa-pen"></i></button>
-          <button class="btn-step btn-del" onclick="deleteTask(${task.id})" title="Xóa"><i class="fa-solid fa-trash"></i></button>
-        </div>
-      </div>
-    `;
-  }).join('');
+  if (task.assigned_user_name) {
+    html += '<span class="assignee"><span class="avatar ' + avatarColorClass(task.assigned_to) + '">' +
+      escapeHtml(initials(task.assigned_user_name)) + '</span>' + escapeHtml(task.assigned_user_name) + '</span>';
+  }
+  if (task.team_name) {
+    html += '<span class="badge gray">' + escapeHtml(task.team_name) + '</span>';
+  }
+  return html;
 }
 
 function renderList() {
-  if (state.tasks.length === 0) {
-    elements.listTableBody.innerHTML = `
-      <tr>
-        <td colspan="7" style="text-align:center; padding: 40px; color: var(--text-muted);">
-          Không tìm thấy công việc phù hợp với bộ lọc hiện tại.
-        </td>
-      </tr>
-    `;
+  const box = $('#taskList');
+  $('#listCount').textContent = state.tasks.length + ' công việc';
+  if (!state.tasks.length) {
+    box.innerHTML = emptyStateHtml('Không có công việc nào khớp bộ lọc. Bấm "Tạo công việc" để thêm mới.');
     return;
   }
-
-  elements.listTableBody.innerHTML = state.tasks.map(task => {
-    const deadlineInfo = computeDeadlineNotice(task.deadline, task.status);
-    const statusMap = {
-      todo: '<span class="tag-badge" style="background: rgba(148, 163, 184, 0.2); color: #CBD5E1;">Cần làm</span>',
-      in_progress: '<span class="tag-badge priority-medium">Đang làm</span>',
-      review: '<span class="tag-badge" style="background: rgba(168, 85, 247, 0.2); color: #E9D5FF;">Đang đánh giá</span>',
-      done: '<span class="tag-badge priority-low">Hoàn thành</span>',
-    };
-
-    return `
-      <tr>
-        <td>
-          <strong style="color:#FFF;">${escapeHTML(task.title)}</strong>
-          ${task.description ? `<br><small style="color:var(--text-muted);">${escapeHTML(task.description.substring(0, 70))}...</small>` : ''}
-        </td>
-        <td>${task.type === 'team' ? '👥 Nhóm' : '👤 Cá nhân'}</td>
-        <td><span class="tag-badge priority-${task.priority}">${task.priority.toUpperCase()}</span></td>
-        <td>${statusMap[task.status] || task.status}</td>
-        <td>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <div class="assignee-bubble">${task.assigned_user_name ? task.assigned_user_name.charAt(0).toUpperCase() : '?'}</div>
-            <span>${escapeHTML(task.assigned_user_name || 'Chưa gán')}</span>
-          </div>
-        </td>
-        <td>
-          <span class="${deadlineInfo.isOverdue ? 'text-rose' : ''}">${deadlineInfo.text}</span>
-        </td>
-        <td class="text-right">
-          <button class="btn-step" onclick="openEditModal(${task.id})"><i class="fa-solid fa-pen"></i></button>
-          <button class="btn-step btn-del" onclick="deleteTask(${task.id})"><i class="fa-solid fa-trash"></i></button>
-        </td>
-      </tr>
-    `;
+  box.innerHTML = state.tasks.map((task) => {
+    const st = STATUS_META[task.status] || STATUS_META.todo;
+    return '<article class="task-row' + (task.status === 'done' ? ' done' : '') + '" data-id="' + task.id + '">' +
+      '<div class="task-main">' +
+        '<h3 class="task-title">' + escapeHtml(task.title) + '</h3>' +
+        (task.description ? '<p class="task-desc">' + escapeHtml(task.description) + '</p>' : '') +
+        '<div class="task-meta">' + taskMetaHtml(task) + '</div>' +
+      '</div>' +
+      '<div class="task-actions">' +
+        '<select class="inline-status" data-id="' + task.id + '" title="Đổi trạng thái nhanh">' +
+          STATUS_ORDER.map((s) => '<option value="' + s + '"' + (s === task.status ? ' selected' : '') + '>' + STATUS_META[s].label + '</option>').join('') +
+        '</select>' +
+        '<button class="icon-btn" data-action="edit" data-id="' + task.id + '" title="Sửa">' +
+          '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg>' +
+        '</button>' +
+        '<button class="icon-btn danger" data-action="delete" data-id="' + task.id + '" title="Xóa">' +
+          '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>' +
+        '</button>' +
+      '</div>' +
+    '</article>';
   }).join('');
 }
 
-function getTransitionButtons(currentStatus, id) {
-  switch (currentStatus) {
-    case 'todo':
-      return `<button class="btn-step" onclick="quickUpdateStatus(${id}, 'in_progress')"><i class="fa-solid fa-play"></i> Bắt đầu</button>`;
-    case 'in_progress':
-      return `
-        <button class="btn-step" onclick="quickUpdateStatus(${id}, 'review')"><i class="fa-solid fa-eye"></i> Review</button>
-        <button class="btn-step" onclick="quickUpdateStatus(${id}, 'done')"><i class="fa-solid fa-check"></i> Xong</button>
-      `;
-    case 'review':
-      return `
-        <button class="btn-step" onclick="quickUpdateStatus(${id}, 'done')"><i class="fa-solid fa-check-double"></i> Duyệt</button>
-        <button class="btn-step" onclick="quickUpdateStatus(${id}, 'in_progress')"><i class="fa-solid fa-rotate-left"></i> Sửa lại</button>
-      `;
-    case 'done':
-      return `<button class="btn-step" onclick="quickUpdateStatus(${id}, 'todo')"><i class="fa-solid fa-arrow-rotate-left"></i> Mở lại</button>`;
-    default:
-      return '';
-  }
+/* ============================== RENDER: KANBAN ============================== */
+
+function renderKanban() {
+  const board = $('#kanbanBoard');
+  board.innerHTML = STATUS_ORDER.map((status) => {
+    const meta = STATUS_META[status];
+    const cards = state.tasks.filter((t) => t.status === status);
+    return '<div class="kanban-col" data-status="' + status + '">' +
+      '<div class="kanban-col-head">' +
+        '<span class="kanban-col-title"><span class="dot" style="background:' + meta.hex + '"></span>' + meta.label + '</span>' +
+        '<span class="col-count">' + cards.length + '</span>' +
+      '</div>' +
+      (cards.length ? cards.map(kanbanCardHtml).join('') : '<div class="kanban-empty">Thả công việc vào đây</div>') +
+    '</div>';
+  }).join('');
+  bindKanbanDnD();
 }
 
-function computeDeadlineNotice(deadlineStr, status) {
-  if (!deadlineStr) return { text: 'Không hạn', isOverdue: false };
-  const deadline = new Date(deadlineStr);
-  const now = new Date();
-  const diffDays = Math.round((deadline - now) / (1000 * 60 * 60 * 24));
-
-  if (deadline < now && status !== 'done') {
-    return { text: `Quá hạn ${Math.abs(diffDays)} ngày ⚠️`, isOverdue: true };
-  }
-  if (diffDays === 0) return { text: 'Hạn hôm nay 🔥', isOverdue: false };
-  if (diffDays === 1) return { text: 'Còn 1 ngày', isOverdue: false };
-  return { text: `Còn ${diffDays} ngày`, isOverdue: false };
+function kanbanCardHtml(task) {
+  const pr = PRIORITY_META[task.priority] || PRIORITY_META.medium;
+  return '<div class="kanban-card" draggable="true" data-id="' + task.id + '">' +
+    '<h3 class="task-title">' + escapeHtml(task.title) + '</h3>' +
+    '<div class="task-meta">' +
+      '<span class="badge ' + pr.color + '">' + pr.label + '</span>' +
+      (task.deadline ? '<span class="deadline' + (isOverdue(task) ? ' overdue' : '') + '">' + formatDate(task.deadline) + '</span>' : '') +
+    '</div>' +
+    '<div class="kanban-card-foot">' +
+      (task.assigned_user_name
+        ? '<span class="assignee"><span class="avatar ' + avatarColorClass(task.assigned_to) + '">' + escapeHtml(initials(task.assigned_user_name)) + '</span></span>'
+        : '<span></span>') +
+      '<span class="task-actions">' +
+        '<button class="icon-btn" data-action="edit" data-id="' + task.id + '" title="Sửa">' +
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg>' +
+        '</button>' +
+        '<button class="icon-btn danger" data-action="delete" data-id="' + task.id + '" title="Xóa">' +
+          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13"/></svg>' +
+        '</button>' +
+      '</span>' +
+    '</div>' +
+  '</div>';
 }
 
-// ============================================================================
-// CRUD ACTIONS
-// ============================================================================
-window.quickUpdateStatus = async function(id, newStatus) {
-  try {
-    const res = await fetch(`/api/tasks/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
+function bindKanbanDnD() {
+  $$('.kanban-card').forEach((card) => {
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', card.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => card.classList.add('dragging'), 0);
     });
-    const data = await res.json();
-    if (data.success) {
-      showToast('Cập nhật trạng thái thành công!');
-      fetchTasks();
-      fetchStats();
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+
+  $$('.kanban-col').forEach((col) => {
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      col.classList.add('drop-target');
+    });
+    col.addEventListener('dragleave', (e) => {
+      if (!col.contains(e.relatedTarget)) col.classList.remove('drop-target');
+    });
+    col.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      col.classList.remove('drop-target');
+      const id = e.dataTransfer.getData('text/plain');
+      const status = col.dataset.status;
+      const task = state.tasks.find((t) => String(t.id) === String(id));
+      if (!task || task.status === status) return;
+      try {
+        await apiPatch('/api/tasks/' + id + '/status', { status });
+        toast('Đã chuyển "' + task.title + '" sang ' + STATUS_META[status].label);
+        await refreshTasks();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    });
+  });
+}
+
+/* ============================== RENDER: TEAMS ============================== */
+
+function renderTeams() {
+  const box = $('#teamList');
+  if (!state.teams.length) {
+    box.innerHTML = emptyStateHtml('Chưa có nhóm nào. Bấm "Tạo nhóm" để bắt đầu.');
+    return;
+  }
+  box.innerHTML = state.teams.map((team) =>
+    '<article class="team-card" data-id="' + team.id + '">' +
+      '<h4>' + escapeHtml(team.name) + '</h4>' +
+      '<p>' + escapeHtml(team.description || 'Chưa có mô tả') + '</p>' +
+      '<div class="team-stats">' +
+        '<span class="badge accent">' + team.member_count + ' thành viên</span>' +
+        '<span class="badge gray">' + team.task_count + ' công việc</span>' +
+      '</div>' +
+      '<div class="team-card-foot">' +
+        '<button class="btn btn-ghost btn-sm" data-action="members" data-id="' + team.id + '">Xem thành viên</button>' +
+      '</div>' +
+    '</article>'
+  ).join('');
+}
+
+async function showMembers(teamId) {
+  const team = state.teams.find((t) => String(t.id) === String(teamId));
+  $('#membersModalTitle').textContent = 'Thành viên: ' + (team ? team.name : '');
+  const box = $('#membersList');
+  box.innerHTML = skeletonRows(2);
+  openModal('membersModal');
+  try {
+    const res = await apiGet('/api/teams/' + teamId + '/members');
+    const members = res.data || [];
+    box.innerHTML = members.length ? members.map((m) =>
+      '<div class="member-row">' +
+        '<span class="avatar ' + avatarColorClass(m.id) + '">' + escapeHtml(initials(m.full_name)) + '</span>' +
+        '<div class="member-info"><b>' + escapeHtml(m.full_name) + '</b>' +
+        '<span>' + escapeHtml(m.email) + ' &middot; ' + escapeHtml(m.role) + '</span></div>' +
+      '</div>'
+    ).join('') : emptyStateHtml('Nhóm chưa có thành viên nào.');
+  } catch (err) {
+    box.innerHTML = emptyStateHtml(err.message);
+  }
+}
+
+/* ============================== RENDER: STATS ============================== */
+
+function donutSvg(rows, colorOf, total) {
+  const size = 150;
+  const r = 56;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  let segments = '';
+  rows.forEach((row) => {
+    const frac = total ? row.count / total : 0;
+    if (frac <= 0) return;
+    const len = frac * c;
+    segments += '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" fill="none" stroke="' + colorOf(row) +
+      '" stroke-width="17" stroke-dasharray="' + len + ' ' + (c - len) + '" stroke-dashoffset="' + (-offset) +
+      '" transform="rotate(-90 ' + size / 2 + ' ' + size / 2 + ')"><title>' + escapeHtml(row.label) + ': ' + row.count + '</title></circle>';
+    offset += len;
+  });
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
+    '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" fill="none" stroke="var(--surface-3)" stroke-width="17"/>' +
+    segments +
+    '<text x="50%" y="47%" text-anchor="middle" font-size="24" font-weight="700" fill="var(--text)">' + total + '</text>' +
+    '<text x="50%" y="61%" text-anchor="middle" font-size="10.5" fill="var(--text-3)">tổng</text>' +
+  '</svg>';
+}
+
+function legendHtml(rows, colorOf) {
+  return '<div class="chart-legend">' + rows.map((row) =>
+    '<div class="legend-row"><span class="swatch" style="background:' + colorOf(row) + '"></span>' +
+    escapeHtml(row.label) + '<b>' + row.count + '</b></div>'
+  ).join('') + '</div>';
+}
+
+function barChartHtml(rows, colorOf, total) {
+  if (!rows.length) return emptyStateHtml('Chưa có dữ liệu');
+  const max = Math.max.apply(null, rows.map((r) => r.count).concat([1]));
+  return '<div class="bar-chart">' + rows.map((row) =>
+    '<div class="bar-row">' +
+      '<div class="bar-label"><span>' + escapeHtml(row.label) + '</span><b>' + row.count + '</b></div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + Math.round((row.count / max) * 100) + '%;background:' + colorOf(row) + '"></div></div>' +
+    '</div>'
+  ).join('') + '</div>';
+}
+
+async function renderStats() {
+  const cards = $('#statCards');
+  cards.innerHTML = skeletonRows(1) + skeletonRows(1);
+  try {
+    const res = await apiGet('/api/stats/summary');
+    const d = res.data;
+    const inProgress = (d.byStatus || []).filter((r) => r.status === 'in_progress' || r.status === 'review')
+      .reduce((a, r) => a + r.count, 0);
+    const done = (d.byStatus || []).find((r) => r.status === 'done');
+    cards.innerHTML =
+      '<div class="stat-card"><div class="label">Tổng công việc</div><div class="value">' + d.total + '</div></div>' +
+      '<div class="stat-card"><div class="label">Đang thực hiện</div><div class="value blue">' + inProgress + '</div></div>' +
+      '<div class="stat-card"><div class="label">Hoàn thành</div><div class="value green">' + ((done && done.count) || 0) + '</div></div>' +
+      '<div class="stat-card"><div class="label">Quá hạn</div><div class="value red">' + d.overdue + '</div></div>';
+
+    const statusRows = STATUS_ORDER.map((s) => ({
+      label: STATUS_META[s].label,
+      count: ((d.byStatus || []).find((r) => r.status === s) || { count: 0 }).count,
+      key: s
+    }));
+    const statusColor = (row) => STATUS_META[row.key].hex;
+    $('#chartStatus').innerHTML = donutSvg(statusRows, statusColor, d.total) + legendHtml(statusRows, statusColor);
+
+    const prioRows = ['high', 'medium', 'low'].map((p) => ({
+      label: 'Ưu tiên ' + PRIORITY_META[p].label,
+      count: ((d.byPriority || []).find((r) => r.priority === p) || { count: 0 }).count,
+      key: p
+    }));
+    $('#chartPriority').innerHTML = barChartHtml(prioRows, (row) => PRIORITY_META[row.key].hex, d.total);
+
+    const typeRows = ['personal', 'team'].map((t) => ({
+      label: TYPE_META[t].label,
+      count: ((d.byType || []).find((r) => r.type === t) || { count: 0 }).count,
+      key: t
+    }));
+    const typeColor = (row) => TYPE_META[row.key].hex;
+    $('#chartType').innerHTML = donutSvg(typeRows, typeColor, d.total) + legendHtml(typeRows, typeColor);
+  } catch (err) {
+    cards.innerHTML = emptyStateHtml(err.message);
+    toast(err.message, 'error');
+  }
+}
+
+/* ============================== VIEW SWITCH ============================== */
+
+async function refreshTasks() {
+  await loadTasks();
+  renderList();
+  renderKanban();
+}
+
+async function switchView(view) {
+  state.view = view;
+  if (location.hash !== '#/' + view) {
+    history.replaceState(null, '', '#/' + view);
+  }
+  $$('.nav-item').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === view));
+  $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + view));
+  try {
+    if (view === 'list' || view === 'kanban') {
+      await loadMeta();
+      await refreshTasks();
+    } else if (view === 'teams') {
+      state.metaLoaded = false;
+      await loadMeta();
+      renderTeams();
+    } else if (view === 'stats') {
+      await renderStats();
     }
   } catch (err) {
-    showToast('Lỗi cập nhật trạng thái', 'error');
+    toast(err.message, 'error');
   }
-};
+}
 
-window.deleteTask = async function(id) {
-  if (!confirm('Bạn có chắc chắn muốn xóa công việc này?')) return;
+/* ============================== TASK MODAL ============================== */
+
+async function openTaskModal(taskId) {
   try {
-    const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) {
-      showToast('Đã xóa công việc!');
-      fetchTasks();
-      fetchStats();
-    }
-  } catch {
-    showToast('Lỗi khi xóa công việc', 'error');
+    await loadMeta();
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
   }
-};
+  state.editingTaskId = taskId || null;
+  const form = $('#taskForm');
+  form.reset();
+  $('#errTitle').hidden = true;
+  $('#fTitle').classList.remove('invalid');
 
-window.openCreateModal = function(status = 'todo') {
-  state.editingTaskId = null;
-  elements.modalTitle.textContent = 'Tạo Công Việc Mới';
-  elements.taskForm.reset();
-  elements.taskIdInput.value = '';
-  elements.taskStatus.value = status;
-
-  const defaultDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
-  elements.taskDeadline.value = defaultDate.toISOString().slice(0, 16);
-
-  elements.taskType.value = 'personal';
-  elements.teamSelectBlock.classList.add('hidden');
-  elements.taskModal.classList.remove('hidden');
-};
-
-window.openEditModal = function(id) {
-  const task = state.tasks.find(t => t.id === id);
-  if (!task) return;
-
-  state.editingTaskId = id;
-  elements.modalTitle.textContent = 'Chỉnh Sửa Công Việc';
-  elements.taskIdInput.value = task.id;
-  elements.taskTitle.value = task.title;
-  elements.taskDescription.value = task.description || '';
-  elements.taskType.value = task.type || 'personal';
-  elements.taskStatus.value = task.status;
-  elements.taskPriority.value = task.priority;
-  elements.taskTeam.value = task.team_id || '';
-  elements.taskAssignee.value = task.assigned_to || '';
-
-  if (task.deadline) {
-    const d = new Date(task.deadline);
-    const tzOffset = d.getTimezoneOffset() * 60000;
-    elements.taskDeadline.value = (new Date(d - tzOffset)).toISOString().slice(0, 16);
+  if (taskId) {
+    const task = state.tasks.find((t) => String(t.id) === String(taskId));
+    if (!task) { toast('Không tìm thấy công việc', 'error'); return; }
+    $('#taskModalTitle').textContent = 'Sửa công việc';
+    $('#btnSaveTask').textContent = 'Cập nhật';
+    $('#fTitle').value = task.title || '';
+    $('#fDescription').value = task.description || '';
+    $('#fDeadline').value = task.deadline ? String(task.deadline).slice(0, 10) : '';
+    $('#fPriority').value = task.priority || 'medium';
+    $('#fStatus').value = task.status || 'todo';
+    $('#fType').value = task.type || 'personal';
+    $('#fTeam').value = task.team_id || '';
+    $('#fAssignee').value = task.assigned_to || '';
   } else {
-    elements.taskDeadline.value = '';
+    $('#taskModalTitle').textContent = 'Tạo công việc';
+    $('#btnSaveTask').textContent = 'Lưu công việc';
   }
-
-  elements.teamSelectBlock.classList.toggle('hidden', task.type !== 'team');
-  elements.taskModal.classList.remove('hidden');
-};
-
-window.handleCardClick = function(event, id) {
-  if (event.target.closest('.task-actions')) return;
-  openEditModal(id);
-};
-
-// Populate Helpers
-function populateTeams() {
-  elements.taskTeam.innerHTML = '<option value="">-- Chọn nhóm làm việc --</option>' +
-    state.teams.map(t => `<option value="${t.id}">${escapeHTML(t.name)}</option>`).join('');
+  openModal('taskModal');
+  setTimeout(() => $('#fTitle').focus(), 60);
 }
 
-function populateUsers() {
-  elements.taskAssignee.innerHTML = '<option value="">-- Chọn thành viên phụ trách --</option>' +
-    state.users.map(u => `<option value="${u.id}">${escapeHTML(u.full_name)} (${escapeHTML(u.email)})</option>`).join('');
+async function submitTaskForm(e) {
+  e.preventDefault();
+  const title = $('#fTitle').value.trim();
+  if (!title) {
+    $('#errTitle').hidden = false;
+    $('#fTitle').classList.add('invalid');
+    $('#fTitle').focus();
+    return;
+  }
+  $('#errTitle').hidden = true;
+  $('#fTitle').classList.remove('invalid');
+
+  const type = $('#fType').value;
+  const payload = {
+    title,
+    description: $('#fDescription').value.trim(),
+    deadline: $('#fDeadline').value || null,
+    priority: $('#fPriority').value,
+    status: $('#fStatus').value,
+    type,
+    team_id: type === 'team' ? ($('#fTeam').value || null) : null,
+    assigned_to: $('#fAssignee').value || null
+  };
+
+  const btn = $('#btnSaveTask');
+  setLoading(btn, true);
+  try {
+    if (state.editingTaskId) {
+      await apiPut('/api/tasks/' + state.editingTaskId, payload);
+      toast('Cập nhật công việc thành công');
+    } else {
+      await apiPost('/api/tasks', payload);
+      toast('Tạo công việc thành công');
+    }
+    closeModal('taskModal');
+    await refreshTasks();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    setLoading(btn, false, state.editingTaskId ? 'Cập nhật' : 'Lưu công việc');
+  }
 }
 
-function escapeHTML(str) {
-  if (!str) return '';
-  return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+async function deleteTask(id) {
+  const task = state.tasks.find((t) => String(t.id) === String(id));
+  const ok = await confirmDialog('Xóa công việc "' + (task ? task.title : '#' + id) + '"? Hành động không thể hoàn tác.');
+  if (!ok) return;
+  try {
+    await apiDelete('/api/tasks/' + id);
+    toast('Đã xóa công việc');
+    await refreshTasks();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
-// ============================================================================
-// EVENT LISTENERS SETUP
-// ============================================================================
-function setupListeners() {
-  // Navigation tabs
-  elements.navKanban.addEventListener('click', () => {
-    state.currentView = 'kanban';
-    elements.navKanban.classList.add('active');
-    elements.navList.classList.remove('active');
-    elements.navAnalytics.classList.remove('active');
-    elements.kanbanBoard.classList.remove('hidden');
-    elements.listView.classList.add('hidden');
-    elements.analyticsSection.classList.add('hidden');
-    renderTasks();
+async function quickStatus(id, status) {
+  try {
+    await apiPatch('/api/tasks/' + id + '/status', { status });
+    toast('Cập nhật trạng thái thành công');
+    await refreshTasks();
+  } catch (err) {
+    toast(err.message, 'error');
+    await refreshTasks();
+  }
+}
+
+/* ============================== TEAM MODAL ============================== */
+
+async function submitTeamForm(e) {
+  e.preventDefault();
+  const name = $('#fTeamName').value.trim();
+  if (!name) {
+    $('#errTeamName').hidden = false;
+    $('#fTeamName').classList.add('invalid');
+    return;
+  }
+  $('#errTeamName').hidden = true;
+  $('#fTeamName').classList.remove('invalid');
+  const btn = $('#btnSaveTeam');
+  setLoading(btn, true);
+  try {
+    await apiPost('/api/teams', { name, description: $('#fTeamDesc').value.trim() });
+    toast('Tạo nhóm thành công');
+    closeModal('teamModal');
+    $('#teamForm').reset();
+    state.metaLoaded = false;
+    await loadMeta();
+    renderTeams();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    setLoading(btn, false, 'Tạo nhóm');
+  }
+}
+
+/* ============================== EVENTS ============================== */
+
+function bindEvents() {
+  $$('.nav-item').forEach((btn) => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+
+  $('#btnNewTask').addEventListener('click', () => openTaskModal(null));
+  $('#taskForm').addEventListener('submit', submitTaskForm);
+  $('#teamForm').addEventListener('submit', submitTeamForm);
+  $('#btnNewTeam').addEventListener('click', () => { $('#teamForm').reset(); openModal('teamModal'); });
+  $('#btnRefreshStats').addEventListener('click', () => renderStats());
+
+  $$('[data-close]').forEach((btn) => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+  $$('.modal-backdrop').forEach((backdrop) => {
+    backdrop.addEventListener('mousedown', (e) => {
+      if (e.target === backdrop && backdrop.id !== 'confirmDialog') closeModal(backdrop.id);
+    });
   });
-
-  elements.navList.addEventListener('click', () => {
-    state.currentView = 'list';
-    elements.navList.classList.add('active');
-    elements.navKanban.classList.remove('active');
-    elements.navAnalytics.classList.remove('active');
-    elements.listView.classList.remove('hidden');
-    elements.kanbanBoard.classList.add('hidden');
-    elements.analyticsSection.classList.add('hidden');
-    renderTasks();
-  });
-
-  elements.navAnalytics.addEventListener('click', () => {
-    const isShowing = !elements.analyticsSection.classList.contains('hidden');
-    elements.analyticsSection.classList.toggle('hidden', isShowing);
-    elements.navAnalytics.classList.toggle('active', !isShowing);
-  });
-
-  // Modal open & close
-  elements.btnOpenNewTaskModal.addEventListener('click', () => openCreateModal('todo'));
-  elements.btnCloseModal.addEventListener('click', () => elements.taskModal.classList.add('hidden'));
-  elements.btnCancelModal.addEventListener('click', () => elements.taskModal.classList.add('hidden'));
-
-  elements.taskModal.addEventListener('click', e => {
-    if (e.target === elements.taskModal) elements.taskModal.classList.add('hidden');
-  });
-
-  elements.taskType.addEventListener('change', () => {
-    elements.teamSelectBlock.classList.toggle('hidden', elements.taskType.value !== 'team');
-  });
-
-  // Task submit
-  elements.taskForm.addEventListener('submit', async e => {
-    e.preventDefault();
-    const payload = {
-      title: elements.taskTitle.value.trim(),
-      description: elements.taskDescription.value.trim(),
-      type: elements.taskType.value,
-      team_id: elements.taskType.value === 'team' ? elements.taskTeam.value : null,
-      status: elements.taskStatus.value,
-      priority: elements.taskPriority.value,
-      assigned_to: elements.taskAssignee.value || null,
-      deadline: elements.taskDeadline.value || null,
-    };
-
-    try {
-      let res;
-      if (state.editingTaskId) {
-        res = await fetch(`/api/tasks/${state.editingTaskId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } else {
-        res = await fetch('/api/tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      }
-
-      const data = await res.json();
-      if (data.success) {
-        showToast(state.editingTaskId ? 'Cập nhật công việc thành công!' : 'Tạo mới công việc thành công!');
-        elements.taskModal.classList.add('hidden');
-        fetchTasks();
-        fetchStats();
-      } else {
-        showToast(data.message || 'Lỗi xử lý', 'error');
-      }
-    } catch {
-      showToast('Lỗi gửi dữ liệu', 'error');
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $$('.modal-backdrop').forEach((m) => { if (!m.hidden && m.id !== 'confirmDialog') closeModal(m.id); });
     }
   });
 
-  // Search
-  let searchTimer;
-  elements.searchInput.addEventListener('input', e => {
-    clearTimeout(searchTimer);
-    const val = e.target.value.trim();
-    elements.btnClearSearch.classList.toggle('hidden', val === '');
-    searchTimer = setTimeout(() => {
-      state.filters.search = val;
-      fetchTasks();
-    }, 250);
+  const onSearch = debounce(() => {
+    state.filters.search = $('#searchInput').value.trim();
+    if (state.view === 'list' || state.view === 'kanban') refreshTasks().catch((err) => toast(err.message, 'error'));
+  }, 300);
+  $('#searchInput').addEventListener('input', onSearch);
+
+  [['#filterStatus', 'status'], ['#filterPriority', 'priority'], ['#filterType', 'type'], ['#filterTeam', 'team_id']]
+    .forEach(([sel, key]) => {
+      $(sel).addEventListener('change', (e) => {
+        state.filters[key] = e.target.value;
+        refreshTasks().catch((err) => toast(err.message, 'error'));
+      });
+    });
+
+  $('#btnClearFilters').addEventListener('click', () => {
+    state.filters = { status: '', priority: '', type: '', team_id: '', search: '' };
+    $('#searchInput').value = '';
+    ['#filterStatus', '#filterPriority', '#filterType', '#filterTeam'].forEach((sel) => { $(sel).value = ''; });
+    refreshTasks().catch((err) => toast(err.message, 'error'));
   });
 
-  elements.btnClearSearch.addEventListener('click', () => {
-    elements.searchInput.value = '';
-    elements.btnClearSearch.classList.add('hidden');
-    state.filters.search = '';
-    fetchTasks();
+  document.addEventListener('click', (e) => {
+    const actionBtn = e.target.closest('[data-action]');
+    if (!actionBtn) return;
+    const { action, id } = actionBtn.dataset;
+    if (action === 'edit') openTaskModal(id);
+    else if (action === 'delete') deleteTask(id);
+    else if (action === 'members') showMembers(id);
   });
 
-  // Segmented Type Filters (All / Personal / Team)
-  elements.typeFilters.addEventListener('click', e => {
-    const btn = e.target.closest('.seg-btn');
-    if (!btn) return;
-    document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.filters.type = btn.dataset.type;
-    fetchTasks();
-  });
-
-  // Priority Filter
-  elements.priorityFilter.addEventListener('change', e => {
-    state.filters.priority = e.target.value;
-    fetchTasks();
+  document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('inline-status')) {
+      quickStatus(e.target.dataset.id, e.target.value);
+    }
   });
 }
 
-// ============================================================================
-// INIT
-// ============================================================================
-document.addEventListener('DOMContentLoaded', () => {
-  setupListeners();
-  fetchMetadata();
-  fetchTasks();
-  fetchStats();
-  checkHealth();
+/* ============================== INIT ============================== */
 
-  setInterval(() => {
-    fetchStats();
-    checkHealth();
-  }, 25000);
-});
+async function init() {
+  initTheme();
+  bindEvents();
+  checkHealth();
+  setInterval(checkHealth, 30000);
+  $('#taskList').innerHTML = skeletonRows(4);
+  const hashView = location.hash.replace('#/', '');
+  await switchView(['list', 'kanban', 'teams', 'stats'].includes(hashView) ? hashView : 'list');
+}
+
+document.addEventListener('DOMContentLoaded', init);
